@@ -7,7 +7,24 @@ import numpy as np
 
 def getTrails(private_key, lat, lon, verbose = False, **kwargs):
     """
-    Wrapper to make API request
+    Wrapper around TrailRunProject's getTrails API
+    to do some error checking and nicely generate the string for
+    optional arguments.
+
+    Additional kwargs are the parameters associated with the API:
+    `maxDistance`, `maxResults`, `sort`, `minLength`, and `minStars`.
+
+    Parameters:
+    -----------
+    private_key   : (string) Private key associated with account making request
+    lat           : (float)  Latitude of query location
+    lon           : (float)  Longitude
+    verbose       : (bool). Optional. Print more info while running
+
+
+    Returns:
+    --------
+    response   :   API response (from requests.get() )
     """
 
 
