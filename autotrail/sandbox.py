@@ -78,7 +78,8 @@ if __name__ == "__main__":
     #   2) database of trail names and summary statistics
     #   3) iterate through ALL trail websites and pull gpx
     #      file from each (UGH)... may need to iterate users
-    #      AND IPs AND UGHHHHHHH
+    #      AND IPs AND UGHHHHHHH... but could be OK
+    #   --- maybe run like 1 scrape per minute? 
     #   4) profit?
     #   5) KEY: Need to figure out how to link and filter out
     #      overlapping trail routes from the list to get ONE
