@@ -312,9 +312,11 @@ class MyHandler2(http.server.BaseHTTPRequestHandler):
         # Get the API code for Strava
         # self.wfile.write('<script>window.close();</script>')
         # print(self.path)
-        code = urllib.parse.parse_qs(
-               urllib.parse.urlparse(self.path).query)['code'][0]
+        full_output = urllib.parse.parse_qs(
+               urllib.parse.urlparse(self.path).query)
 
+        print("---------- full out    ", full_output)
+        code = full_output['code'][0]
         #code = request.args.get('code') #
         print("---------", code)
         # Login to the API
