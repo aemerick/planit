@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-
+import time
 from mpl_toolkits.axes_grid1 import host_subplot
 import mpl_toolkits.axisartist as AA
 
@@ -53,14 +53,40 @@ webbrowser.open(authorize_url)
 # Define the web functions to call from the strava API
 def UseCode(code):
     # Retrieve the login code from the Strava server
-    print("attempting to get access token")
-    access_token = client.exchange_code_for_token(client_id=client_id,
-                                                  client_secret=secret,
-                                                  code=code)
-    print("done, now getting athlete: ", access_token)
-    # Now store that access token somewhere (for now, it's just a local
-    # variable)
-    client.access_token = access_token['access_token']
+
+    regenerate_token = True
+    if os.path.isfile('access.secret'):
+        access_token, refresh_token, expires = open('access.secret').read().strip().split(',')
+        expires = int(expires)
+
+        if expires < (time.time() - 180):
+            # regenerate if expering within the next few minutes
+            print("regenerating access token set to expire at ", expires, time.time())
+        else:
+            regenerate_token = False
+            print("Obtained access token from file. Still valid: ", expires, time.time())
+
+
+    if regenerate_token:
+        print("attempting to get access token")
+        full_token = client.exchange_code_for_token(client_id=client_id,
+                                                      client_secret=secret,
+                                                      code=code)
+        # Now store that access token somewhere (for now, it's just a local
+        # variable)
+        access_token = full_token['access_token']
+        refresh_token = full_token['refresh_token']
+        expires = int(full_token['expires_at'])
+
+        print(full_token)
+        f = open('access.secret','w')
+        f.write(access_token)
+        for k in ['refresh_token','expires_at']:
+            f.write(","+str(full_token[k]))
+        f.write('\n')
+        f.close()
+
+    client.access_token = access_token
     athlete = client.get_athlete()
     print("For %(id)s, I now have an access token %(token)s" %
           {'id': athlete.id, 'token': access_token})
@@ -337,6 +363,8 @@ class MyHandler2(http.server.BaseHTTPRequestHandler):
             MyHandler2.activities_list.append(client.get_activity(act.id))
 
             #print(activity.__dict__)
+
+
 
         #print("looping through activities...")
         #df_lst = {}
