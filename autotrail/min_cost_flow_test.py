@@ -90,8 +90,6 @@ def set_nodes_and_supplies(node_list,start_node,end_node=None):
     return node_list, supplies
 
 def main():
-  """MinCostFlow simple interface example."""
-
   # Define four parallel arrays: start_nodes, end_nodes, capacities, and unit costs
   # between each pair. For instance, the arc from node 0 to node 1 has a
   # capacity of 15 and a unit cost of 4.
@@ -107,6 +105,11 @@ def main():
   # This seems to rely on all values being integers. SO pick a precision (0.01?)
   # and work in units of 100's of miles (or mabe just use to nearest foot?)  #
   # tuples are (start, end, capacity, cost)
+
+
+  start = 0 # start node value
+  end   = 0 # end node value
+  desired_cost = 1 # desired cost (distance, etc)
 
   node_paths = np.array([
                       (0, 1, 1, 1),
@@ -126,8 +129,8 @@ def main():
                       (6, 1, 1, 2),
                       (6, 5, 1, 5) ])
 
-  # sets up the nodes to 
-  node_paths, supplies = set_nodes_and_supplies(node_paths, 0, 0)
+  # sets up the nodes to
+  node_paths, supplies = set_nodes_and_supplies(node_paths, start, end);
 
   start_nodes = node_paths[:,0].tolist()
   end_nodes   = node_paths[:,1].tolist()
@@ -158,6 +161,8 @@ def main():
   # Instantiate a SimpleMinCostFlow solver.
   min_cost_flow = pywrapgraph.SimpleMinCostFlow()
 
+  min_cost_flow.SetDesiredCost(desired_cost);
+
   # Add each arc.
   for i in range(0, len(start_nodes)):
     min_cost_flow.AddArcWithCapacityAndUnitCost(start_nodes[i], end_nodes[i],
@@ -168,9 +173,7 @@ def main():
   for i in range(0, len(supplies)):
     min_cost_flow.SetNodeSupply(i, supplies[i])
 
-
-  # Find the minimum cost flow between node 0 and node 4.
-  if min_cost_flow.Solve() == min_cost_flow.OPTIMAL:
+  if min_cost_flow.SolveWithCostAdjustment() == min_cost_flow.OPTIMAL:
     print('Minimum cost:', min_cost_flow.OptimalCost())
     print('')
     print('  Arc    Flow / Capacity  Cost')
