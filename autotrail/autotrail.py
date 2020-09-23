@@ -369,13 +369,43 @@ class TrailMap(nx.Graph):
         return [( nodes[i], nodes[i+1]) for i in range(len(nodes)-1)]
 
     def find_route(self, start_node,
-                         end_node,          # will change value
-                         target_distance, reinitialize=True):
+                         target_values,
+                         target_methods = None,
+                         end_node=None,
+                         primary_weight = 'distance',
+                         reinitialize=True):
         """
         A DUMB algorithm to try and traverse a graph to find the best
         possible path that fits certain constraints.
 
-        Assumes the node paths are SORTED
+        Parameters
+        -----------
+        start_node     :   (int) start node (TODO: allow for choosing by label)
+        target_values  :   (dict) Dictionary of target values for each edge
+                           feature. (e.g. target_values = {'distance' : 10} will
+                           optimize to target a total distance of this value)
+
+        target_methods :   (dict) Optional dictionary to decide how to evaluate
+                           the target value across edges, with keys corresponding to
+                           the keys in `target_values` and values are one-argument
+                           reduction functions (e.g. np.sum, np.average).
+                           By default, this uses functions defined in
+                           `default_totals_methods` in code to handle targets
+                           that are in `target_values` but not supplied in
+                           `target_method`. Default : None
+
+        end_node      :   (Optional, int) end node. If 'None' uses start_node.
+                          Default : None
+
+        primary_weight : (Optional, string) Key of primary edge attribute to emphasize
+                         in weighting. Algorithm uses an aggregated `weight` attribute
+                         to do actual weighting, but does some sanity checking using
+                         `primary_weight` on its own to ensure that this target
+                         is given preference (Default : distance).
+
+        reinitialize  :   (Optional, bool) Resets 'traversed_count' counters
+                          in graph (if present). Default : True
+
         """
 
 
@@ -395,12 +425,21 @@ class TrailMap(nx.Graph):
         # subG = nx.subgraph_view(G, filter_edge = f)
         #
         #
-        totals_methods  = {'distance' : np.sum, 'max_grade' : np.max,
-                           'min_grade' : np.min, 'average_grade' : np.average,
-                           'elevation_gain' : np.sum, 'elevation_loss' : np.sum}
+        default_target_methods  = {'distance' : np.sum,       'max_grade'      : np.max,
+                                   'min_grade' : np.min,      'average_grade'  : np.average,
+                                   'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
+                                   'traversed_count' : np.sum}
 
-        # for now
-        totals_methods = {'distance' : np.sum, 'weight' : np.sum, 'traversed_count' : np.sum}
+        #
+        # set up totals methods dictionary using input and supply default
+        # if not overridden.
+        #
+        for k in target_values.keys():
+            totals_methods = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
+
+        #
+        # for now - empty dict we can use to copy multiple times if need be
+        #
         empty_totals = {k:0 for k in totals_methods.keys()}
 
         totals = [copy.deepcopy(empty_totals)]
@@ -416,19 +455,23 @@ class TrailMap(nx.Graph):
                 for h in self._adj[t]:
                     self._adj[t][h]['traversed_count'] = 0
 
-        self.recompute_edge_weights()
+            self.recompute_edge_weights()
 
+
+        remaining = {k:0 for k in totals_methods.keys()} # dict to get remainders to target
         while (keep_looping):
 
             subG = self # placeholder to do prefiltering later !!!
 
-            remaining_distance = target_distance - totals[iroute]['distance']
+            # need to do checking here to ensure distance is one of the targets (or soemwhere)
+            # but here for now
+            remaining[primary_key] = target_values[primary_key] - totals[iroute][primary_key]
 
             #
             # get a list of all possible paths within a desired distance:
             #
             next_node = self.get_intermediate_node(current_node,
-                                                   remaining_distance,
+                                                   remaining['distance'],
                                                    G=subG, epsilon=epsilon)
             if next_node < 0:
                 self._dprint("Next node not found!")
@@ -440,7 +483,7 @@ class TrailMap(nx.Graph):
                 # distance
                 shortest_path_home     = nx.shortest_path(subG, current_node, end_node, weight='weight')
                 shortest_edges_home    = self.edges_from_nodes(shortest_path_home)
-                shortest_distance_home = self.reduce_edge_data('distance',edges=shortest_edges_home)
+                shortest_primary_home = self.reduce_edge_data(primary_key,edges=shortest_edges_home)
 
                 #
                 # would potentialy be v cool to iterate here and check once with weight
@@ -449,7 +492,7 @@ class TrailMap(nx.Graph):
                 # no... but maybe I can generate a new fake weight to do something like
                 # this. or pass flag to recompute weights to ignore some things
 
-                if shortest_distance_home > remaining_distance:
+                if shortest_primary_home > remaining[primary_key]:
                     self._dprint("Finding shortest route to get home: ", shortest_path_home, end_node)
                     next_node  = end_node
                     next_path  = shortest_path_home
@@ -479,7 +522,7 @@ class TrailMap(nx.Graph):
             possible_routes[iroute].extend(next_path[1:])
             # increment totals
             for k in (totals[iroute]).keys():
-                newval = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k])
+                newval = self.reduce_edge_data(k, edges=next_edges, function=target_methods[k])
                 totals[iroute][k] = totals_methods[k]( [totals[iroute][k], newval])
 
             # recompute weights:
@@ -514,6 +557,7 @@ class TrailMap(nx.Graph):
         next_node = None
         while next_node is None:
 
+            # This should ensure that point is actually reachable
             all_possible_points = nx.single_source_dijkstra(G, current_node,
                                                             weight=weight,
                                                             cutoff=(epsilon+shift)*target_distance)
