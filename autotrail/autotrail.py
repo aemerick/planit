@@ -450,7 +450,7 @@ class TrailMap(nx.Graph):
                 # this. or pass flag to recompute weights to ignore some things
 
                 if shortest_distance_home > remaining_distance:
-                    self._dprint("Finding shortest route to get home!!!")
+                    self._dprint("Finding shortest route to get home: ", shortest_path_home, end_node)
                     next_node  = end_node
                     next_path  = shortest_path_home
                     next_edges = shortest_edges_home
@@ -459,10 +459,10 @@ class TrailMap(nx.Graph):
                     # pick one of the nodes along the shortest path home
                     inext      = np.random.randint(0, len(shortest_path_home))
                     next_node  = shortest_path_home[inext]
-                    next_path  = shortest_path_home[:inext]
+                    next_path  = shortest_path_home[:inext+1] # AJE: bug here?
                     next_edges = self.edges_from_nodes(next_path)
-                    self._dprint("Picking route on way to home %i %i"%(inext,next_node))
-                    
+                    self._dprint("Picking route on way to home %i %i"%(inext,next_node),next_path)
+
 
 
             else:
