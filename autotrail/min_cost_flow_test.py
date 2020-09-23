@@ -89,47 +89,12 @@ def set_nodes_and_supplies(node_list,start_node,end_node=None):
 
     return node_list, supplies
 
-def main():
-  # Define four parallel arrays: start_nodes, end_nodes, capacities, and unit costs
-  # between each pair. For instance, the arc from node 0 to node 1 has a
-  # capacity of 15 and a unit cost of 4.
 
-  #
-  # Need to generate a graph using star / end pairs for each
-  # direction possible (if one direction is not possible). This
-  # may be easiest to do and keep clean by making tuples and then
-  # stripping these into the individual lists. I *think* in my case
-  # I'll need to make the capacities = 1 (or same value...) and
-  # the unit costs = distance, elevation, etc.
-  #
-  # This seems to rely on all values being integers. SO pick a precision (0.01?)
-  # and work in units of 100's of miles (or mabe just use to nearest foot?)  #
-  # tuples are (start, end, capacity, cost)
+def test_run(node_paths, start, end, desired_cost):
+  """
 
+  """
 
-  start = 0 # start node value
-  end   = 0 # end node value
-  desired_cost = 1 # desired cost (distance, etc)
-
-  node_paths = np.array([
-                      (0, 1, 1, 1),
-                      (1, 0, 1, 1),
-                      (1, 2, 1, 1),
-                      (1, 6, 1, 2),
-                      (2, 1, 1, 1),
-                      (2, 3, 1, 3),
-                      (2, 4, 1, 4),
-                      (2, 5, 1, 2),
-                      (3, 2, 1, 3),
-                      (4, 2, 1, 4),
-                      (4, 5, 1, 1),
-                      (5, 2, 1, 2),
-                      (5, 4, 1, 1),
-                      (5, 6, 1, 5),
-                      (6, 1, 1, 2),
-                      (6, 5, 1, 5) ])
-
-  # sets up the nodes to
   node_paths, supplies = set_nodes_and_supplies(node_paths, start, end);
 
   start_nodes = node_paths[:,0].tolist()
@@ -137,7 +102,14 @@ def main():
   capacities  = node_paths[:,2].tolist() # should all be same!
   unit_costs  = node_paths[:,3].tolist()
 
-
+  #
+  # AJE:
+  #     TO handle min / max grade restrictions (and really even overlapping
+  #     path restrictions maybe) just change the capacity to 0 on these paths.
+  #     the min/max grade capacity change can be done pre-algorithm. The latter
+  #     will have to be updated during the algorithm.
+  #
+  #     might have to iterate to relax restrictions a bit...
 
   # Define an array of supplies at each node.
   #
@@ -174,7 +146,8 @@ def main():
     min_cost_flow.SetNodeSupply(i, supplies[i])
 
   if min_cost_flow.SolveWithCostAdjustment() == min_cost_flow.OPTIMAL:
-    print('Minimum cost:', min_cost_flow.OptimalCost())
+    opt_cost = min_cost_flow.OptimalCost()
+    print('Minimum cost:', opt_cost)
     print('')
     print('  Arc    Flow / Capacity  Cost')
     for i in range(min_cost_flow.NumArcs()):
@@ -185,8 +158,70 @@ def main():
           min_cost_flow.Flow(i),
           min_cost_flow.Capacity(i),
           cost))
+    print("=============== Run Finished ==================")
+    if (desired_cost != opt_cost):
+        print("WARNING====FAIL===== True Cost != Desired Cost:  %i %i"%(desired_cost, opt_cost))
+    else:
+        print("============ True Cost === Desired Cost : %i %i"%(desired_cost, opt_cost))
+
   else:
     print('There was an issue with the min cost flow input.')
+    print("=============== Run Was A Failure ==================")
+
+
+  return
+
+def main():
+  # Define four parallel arrays: start_nodes, end_nodes, capacities, and unit costs
+  # between each pair. For instance, the arc from node 0 to node 1 has a
+  # capacity of 15 and a unit cost of 4.
+
+  #
+  # Need to generate a graph using star / end pairs for each
+  # direction possible (if one direction is not possible). This
+  # may be easiest to do and keep clean by making tuples and then
+  # stripping these into the individual lists. I *think* in my case
+  # I'll need to make the capacities = 1 (or same value...) and
+  # the unit costs = distance, elevation, etc.
+  #
+  # This seems to rely on all values being integers. SO pick a precision (0.01?)
+  # and work in units of 100's of miles (or mabe just use to nearest foot?)  #
+  # tuples are (start, end, capacity, cost)
+
+
+  start = 0 # start node value
+  end   = 4 # end node value
+  desired_cost = 0 # desired cost (distance, etc)
+
+  node_paths = np.array([
+                      (0, 1, 1, 1),
+                      (1, 0, 1, 1),
+                      (1, 2, 1, 1),
+                      (1, 6, 1, 2),
+                      (2, 1, 1, 1),
+                      (2, 3, 1, 3),
+                      (2, 4, 1, 4),
+                      (2, 5, 1, 2),
+                      (3, 2, 1, 3),
+                      (4, 2, 1, 4),
+                      (4, 5, 1, 1),
+                      (5, 2, 1, 2),
+                      (5, 4, 1, 1),
+                      (5, 6, 1, 5),
+                      (6, 1, 1, 2),
+                      (6, 5, 1, 5) ])
+
+  # sets up the nodes to
+
+  #
+  # try multiple tests!
+  #
+
+  for start, end, desired_cost in [(0,4,0)]: # , (0,0,8)]:
+      print("Running with (Start,End,Desired) = (%i,%i,%i)"%(start,end,desired_cost))
+      test_run(node_paths, start, end, desired_cost)
+
+  return
 
 if __name__ == '__main__':
   main()
