@@ -329,8 +329,8 @@ class TrailMap(nx.Graph):
         return [( nodes[i], nodes[i+1]) for i in range(len(nodes)-1)]
 
     def find_route(self, start_node,
-                         end_node, # will change value
-                         target_distance):
+                         end_node,          # will change value
+                         target_distance, reinitialize=True):
         """
         A DUMB algorithm to try and traverse a graph to find the best
         possible path that fits certain constraints.
@@ -343,7 +343,7 @@ class TrailMap(nx.Graph):
 
         # try out a single path
         keep_looping = True
-        max_count    = 100
+        max_count    = 10
         count        = 0
         current_node = start_node
 
@@ -360,47 +360,99 @@ class TrailMap(nx.Graph):
                            'elevation_gain' : np.sum, 'elevation_loss' : np.sum}
 
         # for now
-        totals_methods = {'distance' : np.sum, 'weights' : np.sum, 'traversed_count' : np.sum}
-        empty_totals = {(k,0) for k in totals_methods.keys()}
+        totals_methods = {'distance' : np.sum, 'weight' : np.sum, 'traversed_count' : np.sum}
+        empty_totals = {k:0 for k in totals_methods.keys()}
+
         totals = [copy.deepcopy(empty_totals)]
 
-        possible_routes = [[]]
+        possible_routes = [[start_node]]
         iroute = 0             # making above iterable in case we want to generate
                                # multiple routes in this funciton later and serve
                                # up different options
+
+        if reinitialize:
+            # reset some things
+            for t in self._adj:
+                for h in self._adj[t]:
+                    self._adj[t][h]['traversed_count'] = 0
+
+        self.recompute_edge_weights()
+
         while (keep_looping):
+
             subG = self # placeholder to do prefiltering later !!!
+
+            remaining_distance = target_distance - totals[iroute]['distance']
 
             #
             # get a list of all possible paths within a desired distance:
             #
-            next_node = self.get_intermediate_node(current_node, target_distance,
+            next_node = self.get_intermediate_node(current_node,
+                                                   remaining_distance,
                                                    G=subG, epsilon=epsilon)
             if next_node < 0:
-                _dprint("Next node not found. Exiting search.")
+                self._dprint("Next node not found!")
                 # if epsilon fails I could also just pick a next node at random?
-                break
+                # break
 
-            next_path = nx.shortest_path(self, current_node, next_node, weight='weight')
-            next_edges = self.edges_from_nodes(next_path)
+            if (current_node != start_node) or (next_node < 0):
+                # make sure that we can still get home within a reasonable
+                # distance
+                shortest_path_home     = nx.shortest_path(self, current_node, end_node, weight='weight')
+                shortest_edges_home    = self.edges_from_nodes(shortest_path_home)
+                shortest_distance_home = self.reduce_edge_data('distance',edges=shortest_edges_home)
+
+                #
+                # would potentialy be v cool to iterate here and check once with weight
+                # and once with distance to see if using latter produces better match
+                # at the expense of just repeating route. Can I edit the keys in graph view?
+                # no... but maybe I can generate a new fake weight to do something like
+                # this. or pass flag to recompute weights to ignore some things
+
+                if shortest_distance_home > remaining_distance:
+                    self._dprint("Finding shortest route to get home!!!")
+                    next_node  = end_node
+                    next_path  = shortest_path_home
+                    next_edges = shortest_edges_home
+                else:
+                    # likely running out of room
+                    # pick one of the nodes along the shortest path home
+                    inext      = np.random.randint(0, len(shortest_path_home))
+                    next_node  = shortest_path_home[inext]
+                    next_path  = shortest_path_home[:inext]
+                    next_edges = self.edges_from_nodes(next_path)
+
+
+            else:
+                next_path = nx.shortest_path(self, current_node, next_node, weight='weight')
+                next_edges = self.edges_from_nodes(next_path)
+
+
+            for tail,head in next_edges:
+                self._adj[tail][head]['traversed_count'] += 1
 
             # add path
-            possible_routes[iroute].extend(next_path)
+            self._dprint("Possible and next: ", possible_routes[iroute], next_path)
+
+            possible_routes[iroute].extend(next_path[1:])
             # increment totals
-            for k in totals.keys():
-                totals[iroute][k] = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k])
+            for k in (totals[iroute]).keys():
+                newval = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k])
+                totals[iroute][k] = totals_methods[k]( [totals[iroute][k], newval])
 
             # recompute weights:
             self.recompute_edge_weights() # probably need kwargs
 
             # use edges_to_hide = nx.classes.filters.hide_edges(edges)
             # to filter out based on min / max grade
+            current_node = next_node
             count = count + 1
-            if next_node == end_node:
-                _dprint("We found a successful route! Well... got back home at least ...")
+            if current_node == end_node:
+                self._dprint("We found a successful route! Well... got back home at least ...")
                 keep_looping = False
+
             elif count >= max_count:
-                print("Reached maximum iterations")
+                self._print("Reached maximum iterations")
                 keep_looping = False
 
         #graph.setup_mincostflow()
@@ -419,16 +471,19 @@ class TrailMap(nx.Graph):
 
         next_node = None
         while next_node is None:
+
             all_possible_points = nx.single_source_dijkstra(G, current_node,
                                                             weight=weight,
                                                             cutoff=(epsilon+shift)*target_distance)
+            #self._dprint("get_intermediate_node: epsilon = %.3f"%(epsilon))
 
-            if len(all_possible_points) == 0:
+            if len(all_possible_points[0]) == 1:
                 if epsilon > 1.0:
-                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
-                    raise RuntimeError
+                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    return -1
+                    #raise RuntimeError
 
-                self._dprint("Increasing epsilon in loop %f"%(epsilon))
+                #self._dprint("Increasing epsilon in loop %f"%(epsilon))
                 epsilon = epsilon + shift
                 continue
 
@@ -440,20 +495,20 @@ class TrailMap(nx.Graph):
 
         return next_node
 
-    def _print(self, msg, **kwargs):
+    def _print(self, msg, *args, **kwargs):
         """
         Print overload
         """
-        print("TrailMap: ", msg, **kwargs)
+        print("TrailMap: ", msg, *args, **kwargs)
         return
 
-    def _dprint(self, msg, **kwargs):
+    def _dprint(self, msg, *args, **kwargs):
         """
         Debug print
         """
         if not self.debug:
             return
-        self._print(msg,**kwargs)
+        self._print(msg, *args, **kwargs)
         return
 
 
