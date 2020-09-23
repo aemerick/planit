@@ -438,7 +438,7 @@ class TrailMap(nx.Graph):
             if (current_node != start_node) or (next_node < 0):
                 # make sure that we can still get home within a reasonable
                 # distance
-                shortest_path_home     = nx.shortest_path(self, current_node, end_node, weight='weight')
+                shortest_path_home     = nx.shortest_path(subG, current_node, end_node, weight='weight')
                 shortest_edges_home    = self.edges_from_nodes(shortest_path_home)
                 shortest_distance_home = self.reduce_edge_data('distance',edges=shortest_edges_home)
 
@@ -461,10 +461,12 @@ class TrailMap(nx.Graph):
                     next_node  = shortest_path_home[inext]
                     next_path  = shortest_path_home[:inext]
                     next_edges = self.edges_from_nodes(next_path)
+                    self._dprint("Picking route on way to home %i %i"%(inext,next_node))
+                    
 
 
             else:
-                next_path = nx.shortest_path(self, current_node, next_node, weight='weight')
+                next_path  = nx.shortest_path(subG, current_node, next_node, weight='weight')
                 next_edges = self.edges_from_nodes(next_path)
 
 
