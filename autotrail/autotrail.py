@@ -6,10 +6,13 @@ except:
     from ortools.ortools.graph import pywrapgraph
 
 import numpy as np
-
+import copy
 import networkx as nx
 
 import min_cost_flow_test as mcf_test
+import random
+
+random.seed(12345)
 
 #
 # lets try and hack together a dumb algorithm to do this thing
@@ -222,64 +225,236 @@ def define_graph():
     return graph
 
 
-#class TrailMap(nx.Graph):
-
-#    def __init__(self, *args, **kwargs):
-
-
-
-
-
-
-def traverse_graph(graph, start_node, end_node, target_distance):
+class TrailMap(nx.Graph):
     """
-    A DUMB algorithm to try and traverse a graph to find the best
-    possible path that fits certain constraints.
-
-    Assumes the node paths are SORTED
+    TrailMap class to handle trail Graphs and a
+    traversing algorithm.
     """
 
+    def __init__(self, name = '', *args, **kwargs):
 
-    nrandom = 2 # pick
+        nx.Graph.__init__(self, *args, **kwargs)
+        self.name = name
 
-    # try out a single path
-    keep_looping = False
-    max_count = 100
-    count = 0
-
-    current_node = start_node
-
-    # fraction of total distance to try in each jump
-    epsilon = 0.25
-
-    # do pre-filtering here
-
-    while (keep_looping):
-
-        # get a list of all possible paths within a desired distance:
-        possible_points = nx.single_source_dijkstra(G, current_node,
-                                                       weight='distance',
-                                                       cutoff=epsilon*target_distance)
-
-        if len(possible_points) == 0:
-            _myprint()
-
-        nx.shortest_path()
-        current_path = GraphPath()
-
-        # use edges_to_hide = nx.classes.filters.hide_edges(edges)
-        # to filter out based on min / max grade
+        self.debug = True # debugging print statements
 
 
+        self.edge_attributes = ['distance','weight','max_grade','min_grade',
+                                'avg_grade','elevation_gain','elevation_loss',
+                                'traversed_count']
 
-        count = count + 1
-        if count >= max_count:
-            print("Reaching maximum iterations")
-            keep_looping= False
+        # self.backtrack_weight =
 
-    #graph.setup_mincostflow()
+        return
 
-    return
+    def ensure_edge_attributes(self):
+        """
+        Ensure that edge attributes exist for ALL edges
+        """
+
+        for tail in self._adj:
+            for head in self._adj[tail]:
+                for k in self.edge_attributes:
+                    if not (k in self._adj[tail][head].keys()):
+                        self._adj[tail][head][k] = 0 # MAKE SURE THIS IS OK VALUE (maybe better to nan?)
+        return
+
+    def recompute_edge_weights(self, edges=None):
+        """
+        Recompute edge weights based off of wether or not we
+        consider various things.
+        """
+
+        # need a list of what we are considering
+        # and how to treat it. Hard code for now
+
+        # weightings:
+        f = {'distance' : 1, 'traversed_count' : 10}
+
+
+        for tail in self._adj:
+            max_tail_distance = np.max([self._adj[tail][h]['distance'] for h in self._adj[tail]])
+            for head in self._adj[tail]:
+                e = self._adj[tail][head]
+                self._adj[tail][head]['weight'] = f['distance']*e['distance']+\
+                                                  f['traversed_count']*e['traversed_count']*max_tail_distance # increase by size of max_distance off of tail
+
+        # find max weight currently
+        # max_weight = self.reduce_edge_data('weight')
+
+        # now apply backtrack weightings to really limit these
+
+
+        return
+
+    def reduce_edge_data(self, key, edges=None, function = np.sum):
+        """
+        A nice way to perform some combination function over
+        the desired property for all provided edges.
+
+        Parameters
+        ----------
+        key      : Property keyword associated with the edge. No
+                   error checking is done to ensure valid.
+        edges    : (Optional) iterable edge tuples [(u,v)...] to combine values
+                    from. Default None -> use all edges (self.edges)
+        function : (Optional) Function to apply to the data. This is a
+                   function of one argument (the associated list of values).
+                   Default : np.sum
+
+        Returns:
+        ---------
+        value    : Reduced result from `function`
+        """
+
+        if edges is None:
+            edges = self.edges
+        elif isinstance(edges,tuple):
+            edges = [edges]
+
+
+        values_list = [self.get_edge_data(u,v)[key] for (u,v) in edges]
+        value = function(values_list)
+
+        return value
+
+    @staticmethod
+    def edges_from_nodes(nodes):
+        """
+        Generates connected edges from a list of nodes
+        """
+        #if not isinstance(nodes,list):
+        #    raise ValueError
+
+        return [( nodes[i], nodes[i+1]) for i in range(len(nodes)-1)]
+
+    def find_route(self, start_node,
+                         end_node, # will change value
+                         target_distance):
+        """
+        A DUMB algorithm to try and traverse a graph to find the best
+        possible path that fits certain constraints.
+
+        Assumes the node paths are SORTED
+        """
+
+
+        # nrandom = 2 # pick
+
+        # try out a single path
+        keep_looping = True
+        max_count    = 100
+        count        = 0
+        current_node = start_node
+
+        # fraction of total distance to try in each jump
+        epsilon = 0.25
+
+        # do pre-filtering here using views
+        # nx.classes.filters.hide_edges([(2,5)])
+        # subG = nx.subgraph_view(G, filter_edge = f)
+        #
+        #
+        totals_methods  = {'distance' : np.sum, 'max_grade' : np.max,
+                           'min_grade' : np.min, 'average_grade' : np.average,
+                           'elevation_gain' : np.sum, 'elevation_loss' : np.sum}
+
+        # for now
+        totals_methods = {'distance' : np.sum, 'weights' : np.sum, 'traversed_count' : np.sum}
+        empty_totals = {(k,0) for k in totals_methods.keys()}
+        totals = [copy.deepcopy(empty_totals)]
+
+        possible_routes = [[]]
+        iroute = 0             # making above iterable in case we want to generate
+                               # multiple routes in this funciton later and serve
+                               # up different options
+        while (keep_looping):
+            subG = self # placeholder to do prefiltering later !!!
+
+            #
+            # get a list of all possible paths within a desired distance:
+            #
+            next_node = self.get_intermediate_node(current_node, target_distance,
+                                                   G=subG, epsilon=epsilon)
+            if next_node < 0:
+                _dprint("Next node not found. Exiting search.")
+                # if epsilon fails I could also just pick a next node at random?
+                break
+
+            next_path = nx.shortest_path(self, current_node, next_node, weight='weight')
+            next_edges = self.edges_from_nodes(next_path)
+
+            # add path
+            possible_routes[iroute].extend(next_path)
+            # increment totals
+            for k in totals.keys():
+                totals[iroute][k] = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k])
+
+            # recompute weights:
+            self.recompute_edge_weights() # probably need kwargs
+
+            # use edges_to_hide = nx.classes.filters.hide_edges(edges)
+            # to filter out based on min / max grade
+            count = count + 1
+            if next_node == end_node:
+                _dprint("We found a successful route! Well... got back home at least ...")
+                keep_looping = False
+            elif count >= max_count:
+                print("Reached maximum iterations")
+                keep_looping = False
+
+        #graph.setup_mincostflow()
+
+        # if we're out of the loop
+
+        return totals, possible_routes
+
+
+    def get_intermediate_node(self, current_node, target_distance,
+                                    G=None, epsilon=0.25, weight='distance',
+                                    shift=0.1):
+
+        if G is None:
+            G = self
+
+        next_node = None
+        while next_node is None:
+            all_possible_points = nx.single_source_dijkstra(G, current_node,
+                                                            weight=weight,
+                                                            cutoff=(epsilon+shift)*target_distance)
+
+            if len(all_possible_points) == 0:
+                if epsilon > 1.0:
+                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    raise RuntimeError
+
+                self._dprint("Increasing epsilon in loop %f"%(epsilon))
+                epsilon = epsilon + shift
+                continue
+
+            farthest_node = np.max(all_possible_points[0].values())
+            possible_points = [k for (k,v) in all_possible_points[0].items() if v >= (epsilon-shift)*target_distance]
+
+            # select one at random!!!
+            next_node = random.choice(possible_points)
+
+        return next_node
+
+    def _print(self, msg, **kwargs):
+        """
+        Print overload
+        """
+        print("TrailMap: ", msg, **kwargs)
+        return
+
+    def _dprint(self, msg, **kwargs):
+        """
+        Debug print
+        """
+        if not self.debug:
+            return
+        self._print(msg,**kwargs)
+        return
 
 
 
