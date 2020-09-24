@@ -124,6 +124,9 @@ class Graph():
 class GraphPath():
 
     def __init__(self,parent_graph):
+        """
+
+        """
 
         self._parent_graph = parent_graph
 
@@ -200,6 +203,10 @@ class GraphPath():
         return
 
 def define_graph(graphnum=0):
+    """
+    Some hand-made example graphs for testing out the mode. Select graph
+    with integer `graphnum`. Available: 0, 1
+    """
 
     if graphnum == 0:
         node_paths = np.array([
@@ -282,7 +289,7 @@ class TrailMap(nx.Graph):
         self.edge_attributes = ['distance','elevation_gain','elevation_loss', 'elevation_change',
                                 'min_grade','max_grade','average_grade',
                                 'min_altitude','max_altitude','average_altitude',
-                                'traversed_count']
+                                'traversed_count', 'in_another_route']
 
         #
         # default factors set to zero to turn off
@@ -296,7 +303,8 @@ class TrailMap(nx.Graph):
                                'elevation_loss' : 0,   # off
                                'min_grade' : 0,        # off
                                'max_grade' : 0,        # off
-                               'traversed_count' : 100} # very on
+                               'traversed_count' : 100, # very on
+                               'in_another_route' : 10} # medium on
 
         # self.backtrack_weight =
 
@@ -364,10 +372,90 @@ class TrailMap(nx.Graph):
                 # apply weights for all '_scaled' properties using simple sum for now
                 # need to control this better later. Handle traversed coutn separately
                 self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
-                self._adj[tail][head]['weight'] = self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
+                self._adj[tail][head]['weight'] += self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
+                self._adj[tail][head]['weight'] += self._weight_factors['in_another_route']*max_tail_distance
+
+        return
+
+    def reduce_node_data(self, key, nodes=None, function = None):
+        """
+        A nice way to perform some combination function over
+        the desired property for all provided nodes.
+
+        Parameters
+        ----------
+        key      : Property keyword associated with the node. No
+                   error checking is done to ensure valid. If key is 'index'
+                   checks for 'index' key first, then uses the keyed node number.
+        nodes    : (Optional) iterable nodes tuples [(u,v)...] to combine values
+                    from. Default None -> use all edges (self.edges)
+        function : (Optional) Function to apply to the data. This is a
+                   function of one argument (the associated list of values).
+                   If function is `None` returns list of data.
+                   Default : np.sum
+
+        Returns:
+        ---------
+        value    : Reduced result from `function`
+        """
+
+        if nodes is None:
+            nodes = self.nodes(data=True)
+
+        if (key == 'index') and not (key in nodes[0].keys()):
+            values_array = np.array([n for n,d in nodes])
+        else:
+            values_array = np.array([d[key] for n,d in nodes])
+
+        if function is None:
+            return values_array
+        else:
+            value = function(values_array)
+
+            return value
 
 
         return
+
+    def nearest_node(self, long, lat, k = 1):
+        """
+        Get the nearest k nodes to the coordinate. Returns
+        the index of the node in the node list and the id index of the node
+        itself.
+
+        TODO: generalize coordinates!
+
+        Parameters
+        -----------
+        long : longitude ()
+        lat  : latitude
+        k    : (int) Optional. Number of neighbors to return. Default : 1
+
+        Returns:
+        ---------
+        nearest_indexes  : array containing indexes in node list for nearest nodes
+        nearest_node_ids : array containing node IDs from node properties
+        """
+
+        # ya I know i'm computing Euclidean disntance from a lat long
+        # coordinate which is OBJECTIVELY bad. But this function is meant to
+        # just pick closest point on a 2D map click where click is gonna be super
+        # close to the point so this is kinda OK for now
+
+        node_id   = self.reduce_node_data('index')
+        node_lat  = self.reduce_node_data('lat')
+        node_long = self.reduce_node_data('long')
+
+        # compute distance
+        # just need d^2 since we're sorting. Don't care about actual values
+        dsqr = (node_lat - lat)**2 + (node_long-long)**2
+
+        sort_indexes = np.argsort(dsqr)
+
+        nearest_indexes  = sort_indexes[:k]
+        nearest_node_ids = node_id[sort_indexes[ sort_indexes ]]
+
+        return nearest_indexes, nearest_node_ids
 
     def reduce_edge_data(self, key, edges=None, function = np.sum):
         """
@@ -396,24 +484,60 @@ class TrailMap(nx.Graph):
             edges = [edges]
 
 
-        values_list = [self.get_edge_data(u,v)[key] for (u,v) in edges]
+        values_array = np.array([self.get_edge_data(u,v)[key] for (u,v) in edges])
 
         if function is None:
-            return values_list
+            return values_array
         else:
-            value = function(values_list)
+            value = function(values_array)
 
             return value
 
     @staticmethod
     def edges_from_nodes(nodes):
         """
-        Generates connected edges from a list of nodes
+        Generates connected edges from a list of nodes under
+        the assumption that the nodes are sorted to be connected. So... really
+        just returns a list of overlapping tuples of adjacent values in an array.
         """
         #if not isinstance(nodes,list):
         #    raise ValueError
 
         return [( nodes[i], nodes[i+1]) for i in range(len(nodes)-1)]
+
+
+    def multi_find_route(self, start_node, target_values,
+                               n_routes = 5,
+                               iterations = 10,                    # number of times to iterate !
+                               target_methods=None, end_node=None,
+                               primary_weight = 'distance',
+                               reinitialize = True,                # reset 'traversed' counter each iteration
+                               reset_used_counter = False):        # reset used (binary flag) each iteration
+        """
+        Loops over algorithm multiple times to find multiple routes.
+        Scores the results of these routes and returns the top
+        `n_routes` (set to None, or inf to return all).
+
+        iterations : (int,optional) Number of times to try the route finder.
+
+        """
+
+
+        all_totals = [] * iterations
+        all_routes = [] * iterations
+        for niter in range(iterations):
+
+            all_totals[i], all_routes[i] =\
+                            self.find_route(start_node, target_values,
+                                            target_methods=target_methods,
+                                            end_node=end_node,
+                                            primary_weight=primary_weight,
+                                            reinitialize=reinitialize)
+
+
+        # score, sort, and return  - do all for now
+
+        return all_totals, all_routes
 
     def find_route(self, start_node,
                          target_values,
@@ -422,7 +546,7 @@ class TrailMap(nx.Graph):
                          primary_weight = 'distance',
                          reinitialize=True):
         """
-        A DUMB algorithm to try and traverse a graph to find the best
+        A smart DUMB algorithm to try and traverse a graph to find the best
         possible path that fits certain constraints.
 
         Parameters
@@ -454,7 +578,7 @@ class TrailMap(nx.Graph):
                           in graph (if present). Default : True
 
         """
-        
+
         self.scale_edge_attributes() # needed to do weighting properly
 
 
