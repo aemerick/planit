@@ -70,6 +70,66 @@ setattr(shapely.geometry.LineString, "append", LineString_append)
 setattr(shapely.geometry.LineString, "prepend", LineString_prepend)
 
 
+def add_elevations(gpx_segment):
+    """
+    Given a gpxpy gpx_segment object, adds in elevations to all points (overwriting
+    any existing values). Since the srtm elevation can sometimes return None
+    for certain points (unknown why) does some error checking to make sure
+    that points give valid elevation. Does interpolation / flattening to
+    fill in the None-ed points.
+
+    Fails if all are None. Really hope this doesn't happen.
+    """
+
+    # this gives `None` in some cases (argh!)
+    _elevation_data.add_elevations(gpx_segment) #, smooth=True)
+
+    elevations = np.array([x.elevation for x in gpx_segment.points])
+
+    is_none = elevations == None
+    if all(is_none):
+        print("WARNING: Found a segment with all failed elevations. Setting to hard-coded value for now")
+        elevations = np.ones(len(elevations)) * 1624.0 # hard code to Boulder cause. why the hell not (BAD)
+        is_none = elevations == None
+        #raise RuntimeError
+
+    if any(is_none):
+        not_none = np.logical_not(is_none)
+
+        # need to fix. just interpolate or copy
+        if elevations[0] is None:
+            # find first non-None
+            first = np.where(not_none)[0][0]
+            elevations[:first-1] = elevations[first]
+
+        if elevations[-1] is None:
+            last = np.where(not_none)[0][-1]
+            elevations[last:] = elevations[last]
+
+        # if that didn't fix them all, then we need to go in the
+        # array and check for more
+        is_none  = elevations == None
+        if any(is_none):
+            # more fixing needed
+            where_not_none = np.where(np.logical_not(is_none))[0]
+            for index in np.where(is_none)[0]:
+                if not (elevations[index] is None):
+                    continue
+
+                prev_valid = where_not_none[ where_not_none < index][-1]
+                next_valid  = where_not_none[ where_not_none > index][0]
+
+                # TO DO: Change this to an interpolation using distance (point-by-point)
+                # a      and not just an average
+                elevations[index] = np.average([elevations[prev_valid],elevations[next_valid]])
+
+    # copy back to gpx points
+    for i in range(len(gpx_segment.points)):
+        gpx_segment.points[i].elevation = elevations[i]
+
+    return gpx_segment # just in case
+
+
 def gpx_distances(points):
     """
     Compute distances between gpx points, either as list of
@@ -494,17 +554,15 @@ def process_data(input_gdf,
             tail_coords = (nodes[headi]['long'], nodes[headi]['lat'])
             head_coords = (nodes[taili]['long'], nodes[taili]['lat'])
 
-        coords = [tail_coords] + [x for x in _gdf['geometry'][i].coords] + [head_coords]
-
-        new_line = _gdf['geometry'][i].append(tail_coords)
-        new_line = new_line.prepend(head_coords)
+        new_line = _gdf['geometry'][i].append(head_coords)
+        new_line = new_line.prepend(tail_coords)
 
         #print(coords[0], coords[1], coords[-2],coords[-1])
         gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in new_line.coords]
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
-        _elevation_data.add_elevations(gpx_segment) #, smooth=True)
+        gpx_segment = add_elevations(gpx_segment)
 
         # point-point distances and elevations
         distances   = gpx_distances(gpx_segment.points)
@@ -517,6 +575,7 @@ def process_data(input_gdf,
             print('---',gpx_points)
             print('-distances ',distances)
             print('coords: ', coords)
+            return _gdf, gpx_segment
             raise RuntimeError
 
         grade       = dz / distances * 100.0            # percent grade!
