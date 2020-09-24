@@ -1,5 +1,8 @@
+
 import numpy as np
 import pandas as pd
+import copy
+import os
 
 #
 # Packages for handling geospatial data
@@ -8,27 +11,44 @@ import geopandas as geopd
 import gpxpy
 import srtm
 import shapely
-import copy
 import networkx as nx
 
-# set up global lookup table
+try:
+    import cPickle as pickle
+except:
+    import pickle
+
+#
+# set up global lookup table for making elevation data
+#
 _elevation_data = srtm.get_data()
 
 
-def process_geopandas():
+def gpx_distances(points):
     """
-    Given a geopandas data frame process it
-    """
-
-    return
-
-
-def load_gpx_data():
-    """
+    Compute distances between gpx points, either as list of
+    GPXTrackPoints from gpxpy OR list of tuples
     """
 
+    is_GPX = False
+    if not isinstance(points[0],tuple):
+        is_GPX=True
 
-    return
+    if is_GPX:
+        p = [(x.latitude,x.longitude,x.elevation) for x in points]
+    else:
+        p = points
+
+
+    distance = np.zeros(len(p)-1)
+    for i in np.arange(1, len(p)):
+        distance[i-1] = gpxpy.geo.distance(p[i][0],p[i][1],p[i][2],
+                                         p[i-1][0],p[i-1][1],p[i-1][2])
+
+
+    return distance
+
+
 
 
 def add_elevation(gpx):
@@ -40,6 +60,9 @@ def add_elevation(gpx):
 
     return
 
+
+import shapely
+import copy
 
 def traverse_merge_list(ni, merge_list, to_merge):
     """
@@ -61,10 +84,11 @@ def traverse_merge_list(ni, merge_list, to_merge):
     and then sort it, finalizing to [2,3,4,6]
 
     """
+
     for nj in merge_list[ni]:
         if not (nj in to_merge):
             to_merge.append(nj)
-            traverse_merge_list(nj, to_merge, merge_list)
+            traverse_merge_list(nj, merge_list, to_merge)
         else:
             continue
 
@@ -72,30 +96,161 @@ def traverse_merge_list(ni, merge_list, to_merge):
 
     return
 
-def process_data(input_gdf, threshold_distance = 1.0):
+
+#
+# Need a nice, clean way to save and load the data!
+#
+def save_trail_df(outname, gdf, nodes=None, edges = None):
     """
-    Given a gdf, process it!
+    Save the (processed?) geopandas dataframe to file so we don't have
+    to always re-generate in entirety later.
 
-    This is the VERY brute force way of doing this because
+    outname cannot include a filetype (outfile = outname + '.extension')
 
-    1) I only have to ultimately do it once for the MVP of this project
-
-    and
-
-    2) the smart part of my brain is semi-fried and I'm just
-    trying to get code down....
-    which means
-
-    3) way too many loops
-
-    threshold_distance  :  distance between two nodes to merge (in m!)
+    If nodes and edges are provided, these are saved alongside the
+    dataframe in a pickle (for now... but should generalize...)
     """
+
+    # save the geopandas as a geojson
+    # outname = outname.split('.')[:-1] # toss extension
+    gdf.to_file(outname + '.geojson', driver = 'GeoJSON')
+
+    # if nodes are provided, pickle these using same outname
+    if not (nodes is None):
+
+        with open(outname+'_nodes.pickle','wb') as outfile:
+            pickle.dump(nodes, outfile, protocol = 4)
+
+
+    else:
+        print("WARNING: Are you sure you don't want to save the nodes dictionary?")
+
+    if not (edges is None):
+
+        with open(outname+'_edges.pickle','wb') as outfile:
+            pickle.dump(edges, outfile, protocol = 4)
+
+    else:
+        print("WARNING: Are you sure you don't want to save the edges dictionary?")
+
+    return
+
+def load_trail_df(inname, load_nodes=True, load_edges=True):
+    """
+    Load a trail dataframe. If `nodes` or `edges` are true, checks for
+    the associated `.nodes` and `.edges` pickles and tries to load them.
+
+    Returns geopandas dataframe. If load_nodes or load_edges are True (default)
+    returns the geopandas dataframe, nodes list, and edges list together
+    in a list (in that order).
+    """
+
+    result = [geopd.read_file(inname + '.geojson')]
+
+    if load_nodes:
+        nodefile = inname + '_nodes.pickle'
+
+        if os.path.isfile(nodefile):
+            with open(nodefile,'rb') as f:
+                nodes = pickle.load(f)
+        else:
+            print("Cannot file nodefile to load: ", nodefile)
+            nodes = None
+
+        result.append(nodes)
+
+    if load_edges:
+        edgefile = inname + '_edges.pickle'
+
+        if os.path.isfile(edgefile):
+            with open(nodefile,'rb') as f:
+                edges = pickle.load(f)
+        else:
+            print("Cannot file edgefile to load: ", edgefile)
+            edges = None
+
+        result.append(edges)
+
+    if (not load_nodes) and (not load_edges):
+        return result[0]
+    else:
+        return result
+
+    return
+
+def save_graph(outname, G):
+    """
+    Pickle up a networkx graph.
+    """
+
+    with open(outname + '_networkx.graph','wb') as outfile:
+        pickle.dump(G, outfile, protocol = 4)
+
+    return
+
+def load_graph(inname):
+    with open(inname + '_networkx.graph', 'rb') as f:
+        return pickle.load(f)
+
+def process_data(input_gdf,
+                 outname = None,
+                 # gpx_key = 'geometry', - should always be the case
+                 threshold_distance = 2.0):
+    """
+    Given a trail dataset, process it!
+
+    This function is designed to take in one of two trial datasets from the
+    Boulder area loaded through geopandas, passed as `input_gdf`. It then
+    filters that dataset with the goal of assining nodes at all trail
+    start / end points and intersections. Currently this does this through
+    brute force, and is a bit slow (5 minutes for the larger of the two
+    datasets, comprised of 11,087 initial segments).
+
+    This function:
+        1) Assigns initial nodes to all trail segment start and end points
+
+        2) Finds most trail junctions by filtering through all nodes to find
+           nearby nodes (defined as those within `threshold distance`). These
+           are considered connected junctions and the nodes are merged into
+           a single new node and tail/head of edges are reassigned accordingly.
+
+        3) TODO: Compute edge quantities we WANT for the networkx graph solve
+                 and throw away features we don't care about (for the graph).
+
+        4) TODO: Check for instances of trail junctions where a node A is in the
+                 middle of a segment (1). In this case, split 1 into new
+                 segments joined at A.
+
+        5) Long term todo: check for nodes that can be joined by short distances
+           on road that are not in trail data.
+
+    In the end, this returns the processed dataset, the generated nodes,
+    edges, and a networkx graph object constructed from these.
+
+    Parameters:
+    ------------
+
+    threshold_distance  :  (float) distance between two nodes to merge (in m!)
+
+
+    """
+
+    #
+    # deal with a local copy for now
+    #
     _gdf = input_gdf.copy()
 
 
     small_dataset_type = False # assume we're on a larger dataset
-    if 'OBJECTID' in _gdf.columns:
+    if 'Shapelen' in _gdf.columns:
         small_dataset_type = True # for small dataset columns
+        columns_keep = ['OBJECTID','FEATURE_NAME','SURFACE_TYPE',
+                        'PED','BIKE','HORSE','DOG','geometry']
+    else:
+        columns_keep = ['OBJECTID','TRAILNAME','PEDESTRIAN',
+                        'BIKE','HORSE','OHV','TRAILTYPE',
+                        'SURTYPE','DOGS','GlobalID','BATTrailID',
+                        'geometry']
 
     #
     # step one, break apart all multi-line segments into their own
@@ -158,13 +313,17 @@ def process_data(input_gdf, threshold_distance = 1.0):
         ni += 2
 
     print("Computed %i nodes for %i edges"%(len(nodes),len(edges)))
+
+    #
     #
     # Step 3: Brute force to find distances between nodes.
     #         If nodes are < some value separated then JOIN
     #
+    #
+
     lat  = [n['lat'] for n in nodes]
     long = [n['long'] for n in nodes]
-    elev = [elevation_data.get_elevation(x,y) for (x,y) in zip(lat,long)]
+    elev = [_elevation_data.get_elevation(x,y) for (x,y) in zip(lat,long)]
 
     numnodes    = len(nodes)
     merge_list  = [[] for _ in range(numnodes)] # for each node, list of nodes merging with
@@ -188,18 +347,15 @@ def process_data(input_gdf, threshold_distance = 1.0):
     # now we need to MERGE together all of the nodes
     # and re-assign the edges for them
     #
-    ni = -1
     to_append = []
     to_drop   = []
 
     mask = np.zeros(len(merge_list), dtype=bool)
+    edge_relabel = {i:i for i in range(numnodes)} # use to relabel nodes in edges list later
 
-    edge_relabel = {i:i for i in range(nodes)} # use to relabel nodes in edges list later
+    for ni in range(numnodes):
 
-    for mi in range(merge_list):
-        ni = ni + 1     # current node !
-
-        if len(m) == 0 or mask[mi]: # empty
+        if (len(merge_list[ni]) == 0) or mask[ni]: # empty or already completed
             continue
 
         # now we have one!!!
@@ -211,8 +367,6 @@ def process_data(input_gdf, threshold_distance = 1.0):
         #  2) re-labelling edges that touch these nodes with the
         #     new node index (take to be the min of nodes being merged)
 
-        # go through list of nodes to merge to double check consistency
-        to_merge = [ni]
 
         # gathers list of nodes that are linked together in common
         # with the current node and all nodes that may be chained
@@ -220,35 +374,114 @@ def process_data(input_gdf, threshold_distance = 1.0):
         # to group ALL of them together.
         #
         # nodes to merge are in `to_merge`
+        to_merge = [ni]
         traverse_merge_list(ni, merge_list, to_merge)
 
         mask[to_merge] = True # flag these to not repeat merge again
 
+        nodes_select = [nodes[nj] for nj in to_merge]
+
         new_node  = {'index' : np.min(to_merge),
-                     'lat'   : np.average([x['lat'] for x in nodes[to_merge]]),
-                     'long'  : np.average([x['long'] for x in nodes[to_merge]]),
-                     'edges' : [x['edges'] for x in nodes[to_merge]] }
+                     'lat'   : np.average([x['lat'] for x in nodes_select]),
+                     'long'  : np.average([x['long'] for x in nodes_select]),
+                     'edges' : [x['edges'] for x in nodes_select] }
 
         # need to relabel edges !!
         for nj in to_merge:
             edge_relabel[nj] = new_node['index']
 
+            nodes[nj]['index'] = -999 # flag for deletion
+
         # add to append list
         to_append.append(new_node)
         # add to drop list
-        to_drop.append(to_merge)
+        to_drop.extend(to_merge)
 
-    for i in len(edges):
-        edges[i] = ()
+    # print('append: ', to_append)
+    print("Modifying Nodes. Creating %i new nodes from merging %i together"%(len(to_append),len(to_drop)))
 
-    nodes.append(to_append)
-    for ni in to_drop:
-        nodes.pop(ni)
+    nodes.extend(to_append)
 
+    nodes = [n for n in nodes if n['index'] >= 0]
 
+    print("New node list length (%i) from previous (%i)"%(len(nodes),numnodes))
 
+    # might be nice to do one more step to make node indexes
+    # continuous. skip for now.
+
+    # assign new tail head nodes to all edges... and done!!
+    for i in range(len(edges)):
+        edges[i] = (edge_relabel[edges[i][0]], edge_relabel[edges[i][1]])
+
+    #
     # Last step
     # Recompute all distances, elevation gains, elevation losses
     # min grade, max grade, average grade for consistency
     #
-    return _gdf, nodes, edges #, lat, long, merge_list
+
+    # add columns to dataframe
+    compute_columns = ['distance','elevation_gain','elevation_loss', 'elevation_change',
+                       'min_grade','max_grade','average_grade',
+                       'min_altitude','max_altitude']
+
+    ncol = len(_gdf.columns)
+    i = 0
+    zeros = np.zeros(len(_gdf))
+    for k in compute_columns:
+        try:
+            _gdf.insert(ncol+i, k, zeros) # insert zeroed and at end
+            i = i + 1
+        except ValueError:
+            continue # already exists
+
+    for i in range(len(edges)):
+        #
+        # recompute distances there MUST be a better way to do this
+        # than making all these objects
+        #
+
+        # make a gpx segment from the coordinates
+        gpx_segment = gpxpy.gpx.GPXTrackSegment()
+        gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in _gdf['geometry'][i].coords]
+        gpx_segment.points.extend(gpx_points)
+
+        # add in elevation data
+        elevation_data.add_elevations(gpx_segment, smooth=True)
+
+        # point-point distances and elevations
+        distances   = gpx_distances(gpx_points)
+        elevations  = [x.elevation for x in gpx_points]
+        dz          = elevations[1:] - elevations[:-1]  # change in elevations
+        grade       = dz / distances * 100.0            # percent grade!
+
+        _gpdf.iloc[i]['distance']         = np.sum(distances)
+        _gpdf.iloc[i]['elevation_gain']   = np.sum( dz[dz>0])
+        _gpdf.iloc[i]['elevation_loss']   = np.abs(np.sum( ds[ds<0] ))  # store as pos val
+        _gpdf.iloc[i]['elevation_change'] = _gpdf.iloc[i]['elevation_gain'] + _gpdf.iloc[i]['elevation_loss']
+        _gpdf.iloc[i]['min_grade']        = np.min(grade)
+        _gpdf.iloc[i]['max_grad']         = np.max(grade)
+        _gpdf.iloc[i]['average_grade']    = np.average(grade, weights = distanes) # weighted avg!!
+        _gpdf.iloc[i]['min_altitude']     = np.min(elevations)
+        _gpdf.iloc[i]['max_altitude']     = np.max(elevations)
+        _gpdf.iloc[i]['average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
+
+
+    # keep these on Graph edges. Its why we made them in the first place
+    columns_keep.extend(compute_columns)
+
+    # nx_graph_from_gpdf(_gdf)
+    # lets try and make the graph
+    G = nx.Graph()
+
+    # list of tuples [(index, {})....]
+    G.add_nodes_from( [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes])
+
+    # edges
+    G.add_edges_from( [ (e[0],e[1], _gdf.iloc[i][columns_keep]) for i,e in enumerate(edges)])
+
+    if not (outname is None):
+
+        save_trail_df(outname, _gdf, nodes, edges)
+        save_graph(outname, G)
+
+    return _gdf, G # nodes, edges #, lat, long, merge_list
