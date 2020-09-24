@@ -453,7 +453,7 @@ class TrailMap(nx.Graph):
         sort_indexes = np.argsort(dsqr)
 
         nearest_indexes  = sort_indexes[:k]
-        nearest_node_ids = node_id[sort_indexes[ sort_indexes ]]
+        nearest_node_ids = node_id[nearest_indexes]
 
         return nearest_indexes, nearest_node_ids
 
