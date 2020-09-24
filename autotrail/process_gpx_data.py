@@ -499,18 +499,16 @@ def process_data(input_gdf,
         new_line = _gdf['geometry'][i].append(tail_coords)
         new_line = new_line.prepend(head_coords)
 
-
         #print(coords[0], coords[1], coords[-2],coords[-1])
-
-        gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in coords]
+        gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in new_line.coords]
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
         _elevation_data.add_elevations(gpx_segment) #, smooth=True)
 
         # point-point distances and elevations
-        distances   = gpx_distances(gpx_points)
-        elevations  = np.array([x.elevation for x in gpx_points])
+        distances   = gpx_distances(gpx_segment.points)
+        elevations  = np.array([x.elevation for x in gpx_segment.points])
         try:
             dz          = elevations[1:] - elevations[:-1]  # change in elevations
         except:
@@ -522,7 +520,7 @@ def process_data(input_gdf,
             raise RuntimeError
 
         grade       = dz / distances * 100.0            # percent grade!
-        grade[np.abs(distances) < 0.1] = 0.0
+        grade[np.abs(distances) < 0.1] = 0.0            # prevent arbitary large grades for short segs with errors
 
         _gdf.at[i,'distance']         = np.sum(distances)
         _gdf.at[i,'elevation_gain']   = np.sum( dz[dz>0])
