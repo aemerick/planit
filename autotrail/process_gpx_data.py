@@ -446,7 +446,7 @@ def process_data(input_gdf,
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
-        elevation_data.add_elevations(gpx_segment, smooth=True)
+        _elevation_data.add_elevations(gpx_segment, smooth=True)
 
         # point-point distances and elevations
         distances   = gpx_distances(gpx_points)
