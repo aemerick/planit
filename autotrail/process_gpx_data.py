@@ -13,6 +13,8 @@ import srtm
 import shapely
 import networkx as nx
 
+from autotrail import TrailMap
+
 try:
     import cPickle as pickle
 except:
@@ -195,7 +197,7 @@ def load_graph(inname):
 def process_data(input_gdf,
                  outname = None,
                  # gpx_key = 'geometry', - should always be the case
-                 threshold_distance = 2.0):
+                 threshold_distance = 3.0):
     """
     Given a trail dataset, process it!
 
@@ -204,7 +206,7 @@ def process_data(input_gdf,
     filters that dataset with the goal of assining nodes at all trail
     start / end points and intersections. Currently this does this through
     brute force, and is a bit slow (5 minutes for the larger of the two
-    datasets, comprised of 11,087 initial segments).
+    datasets, comprised of 11,087 initial segments; ).
 
     This function:
         1) Assigns initial nodes to all trail segment start and end points
@@ -214,15 +216,16 @@ def process_data(input_gdf,
            are considered connected junctions and the nodes are merged into
            a single new node and tail/head of edges are reassigned accordingly.
 
-        3) TODO: Compute edge quantities we WANT for the networkx graph solve
-                 and throw away features we don't care about (for the graph).
-
-        4) TODO: Check for instances of trail junctions where a node A is in the
+        -----) TODO: Check for instances of trail junctions where a node A is in the
                  middle of a segment (1). In this case, split 1 into new
                  segments joined at A.
 
-        5) Long term todo: check for nodes that can be joined by short distances
-           on road that are not in trail data.
+        -----) Long term todo: check for nodes that can be joined by short distances
+               on road that are not in trail data.
+
+        3) Computes edge quantities we WANT for the networkx graph solve
+           and add these and only specified original features to Graph
+           edges.
 
     In the end, this returns the processed dataset, the generated nodes,
     edges, and a networkx graph object constructed from these.
@@ -422,15 +425,13 @@ def process_data(input_gdf,
     # add columns to dataframe
     compute_columns = ['distance','elevation_gain','elevation_loss', 'elevation_change',
                        'min_grade','max_grade','average_grade',
-                       'min_altitude','max_altitude']
+                       'min_altitude','max_altitude','average_altitude','traversed_count']
 
     ncol = len(_gdf.columns)
-    i = 0
     zeros = np.zeros(len(_gdf))
     for k in compute_columns:
         try:
-            _gdf.insert(ncol+i, k, zeros) # insert zeroed and at end
-            i = i + 1
+            _gdf.insert(5, k, zeros) # insert zeroed and at end
         except ValueError:
             continue # already exists
 
@@ -446,32 +447,34 @@ def process_data(input_gdf,
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
-        _elevation_data.add_elevations(gpx_segment, smooth=True)
+        _elevation_data.add_elevations(gpx_segment) #, smooth=True)
 
         # point-point distances and elevations
         distances   = gpx_distances(gpx_points)
-        elevations  = [x.elevation for x in gpx_points]
+        elevations  = np.array([x.elevation for x in gpx_points])
         dz          = elevations[1:] - elevations[:-1]  # change in elevations
         grade       = dz / distances * 100.0            # percent grade!
+        grade[distances<0.1] = 0.0
 
-        _gpdf.iloc[i]['distance']         = np.sum(distances)
-        _gpdf.iloc[i]['elevation_gain']   = np.sum( dz[dz>0])
-        _gpdf.iloc[i]['elevation_loss']   = np.abs(np.sum( ds[ds<0] ))  # store as pos val
-        _gpdf.iloc[i]['elevation_change'] = _gpdf.iloc[i]['elevation_gain'] + _gpdf.iloc[i]['elevation_loss']
-        _gpdf.iloc[i]['min_grade']        = np.min(grade)
-        _gpdf.iloc[i]['max_grad']         = np.max(grade)
-        _gpdf.iloc[i]['average_grade']    = np.average(grade, weights = distanes) # weighted avg!!
-        _gpdf.iloc[i]['min_altitude']     = np.min(elevations)
-        _gpdf.iloc[i]['max_altitude']     = np.max(elevations)
-        _gpdf.iloc[i]['average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
+        _gdf.at[i,'distance']         = np.sum(distances)
+        _gdf.at[i,'elevation_gain']   = np.sum( dz[dz>0])
+        _gdf.at[i,'elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
+        _gdf.at[i,'elevation_change'] = _gdf.iloc[i]['elevation_gain'] + _gdf.iloc[i]['elevation_loss']
+        _gdf.at[i,'min_grade']        = np.min(grade)
+        _gdf.at[i,'max_grad']         = np.max(grade)
+        _gdf.at[i,'average_grade']    = np.average(grade, weights = distances) # weighted avg!!
+        _gdf.at[i,'min_altitude']     = np.min(elevations)
+        _gdf.at[i,'max_altitude']     = np.max(elevations)
+        _gdf.at[i,'average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
+        _gdf.at[i,'traversed_count'] = 0
 
 
     # keep these on Graph edges. Its why we made them in the first place
     columns_keep.extend(compute_columns)
 
-    # nx_graph_from_gpdf(_gdf)
+    # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
-    G = nx.Graph()
+    G = TrailMap()
 
     # list of tuples [(index, {})....]
     G.add_nodes_from( [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes])
