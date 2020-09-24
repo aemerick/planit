@@ -443,7 +443,31 @@ def process_data(input_gdf,
 
         # make a gpx segment from the coordinates
         gpx_segment = gpxpy.gpx.GPXTrackSegment()
-        gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in _gdf['geometry'][i].coords]
+        tail,head = edges[i]
+        taili = [i for i,n in enumerate(nodes) if n['index'] == tail][0]
+        headi = [i for i,n in enumerate(nodes) if n['index'] == head][0]
+
+        #print(tail,head, taili, headi)
+
+        tail_coords = (nodes[taili]['long'], nodes[taili]['lat'])
+        head_coords = (nodes[headi]['long'], nodes[headi]['lat'])
+
+        # make sure this is ordered correctly
+        d1 = np.sqrt( (tail_coords[0] - _gdf['geometry'][i].coords[0][0])**2 +\
+                      (tail_coords[1] - _gdf['geometry'][i].coords[0][1])**2)
+
+        d2 = np.sqrt( (tail_coords[0] - _gdf['geometry'][i].coords[-1][0])**2 +\
+                      (tail_coords[1] - _gdf['geometry'][i].coords[-1][1])**2)
+
+        if d2 < d1: # flip!
+            tail_coords = (nodes[headi]['long'], nodes[headi]['lat'])
+            head_coords = (nodes[taili]['long'], nodes[taili]['lat'])
+
+        coords = [tail_coords] + [x for x in _gdf['geometry'][i].coords] + [head_coords]
+
+        #print(coords[0], coords[1], coords[-2],coords[-1])
+
+        gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in coords]
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
@@ -454,7 +478,7 @@ def process_data(input_gdf,
         elevations  = np.array([x.elevation for x in gpx_points])
         dz          = elevations[1:] - elevations[:-1]  # change in elevations
         grade       = dz / distances * 100.0            # percent grade!
-        grade[distances<0.1] = 0.0
+        grade[np.abs(distances) < 0.1] = 0.0
 
         _gdf.at[i,'distance']         = np.sum(distances)
         _gdf.at[i,'elevation_gain']   = np.sum( dz[dz>0])
