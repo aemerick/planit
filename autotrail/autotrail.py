@@ -454,6 +454,8 @@ class TrailMap(nx.Graph):
                           in graph (if present). Default : True
 
         """
+        
+        self.scale_edge_attributes() # needed to do weighting properly
 
 
         # nrandom = 2 # pick
