@@ -26,6 +26,50 @@ except:
 _elevation_data = srtm.get_data()
 
 
+# append for shapely linestring
+def LineString_append(self, new_points, mode='append'):
+    """
+    Append a single coordinate or list of coordinates. Can
+    either be a tuple or shapely Point (or list of either).
+    Does error checking to make sure point does not already
+    exist at the start/end of the line, but ONLY for the
+    start (end) / end (start) points of the new_points (line).
+    """
+
+    if isinstance(new_points, tuple) or\
+       isinstance(new_points, shapely.geometry.Point):
+       new_points = [new_points]
+
+    if mode == 'append':
+        connect_index = 0
+    elif mode == 'prepend':
+        connect_index = -1
+
+    connect_coord = new_points[connect_index]
+    if hasattr(connect_coord, 'coords'):
+        connect_coord = connect_coords.coords[0]
+
+    if mode == 'append':
+        if self.coords[-1] == connect_coord:
+            new_points.pop(0)
+    elif mode == 'prepend':
+        if self.coords[0] == connect_coord:
+            new_points.pop(-1)
+
+    if len(new_points) == 0:
+        return self
+    elif mode == 'append':
+        return shapely.geometry.LineString( list(self.coords) + new_points)
+    elif mode == 'prepend':
+        return shapely.geometry.LineString( new_points + list(self.coords))
+
+def LineString_prepend(self, new_points):
+    return self.append(new_points, mode='prepend')
+
+setattr(shapely.geometry.LineString, "append", LineString_append)
+setattr(shapely.geometry.LineString, "prepend", LineString_prepend)
+
+
 def gpx_distances(points):
     """
     Compute distances between gpx points, either as list of
@@ -50,21 +94,6 @@ def gpx_distances(points):
 
     return distance
 
-
-
-
-def add_elevation(gpx):
-    """
-    Given a set of GPX data
-    """
-
-    _elevation_data.add_elevations(gpx)
-
-    return
-
-
-import shapely
-import copy
 
 def traverse_merge_list(ni, merge_list, to_merge):
     """
@@ -441,7 +470,9 @@ def process_data(input_gdf,
         # than making all these objects
         #
 
+        #
         # make a gpx segment from the coordinates
+        #
         gpx_segment = gpxpy.gpx.GPXTrackSegment()
         tail,head = edges[i]
         taili = [i for i,n in enumerate(nodes) if n['index'] == tail][0]
@@ -465,6 +496,10 @@ def process_data(input_gdf,
 
         coords = [tail_coords] + [x for x in _gdf['geometry'][i].coords] + [head_coords]
 
+        new_line = _gdf['geometry'][i].append(tail_coords)
+        new_line = new_line.prepend(head_coords)
+
+
         #print(coords[0], coords[1], coords[-2],coords[-1])
 
         gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in coords]
@@ -476,7 +511,16 @@ def process_data(input_gdf,
         # point-point distances and elevations
         distances   = gpx_distances(gpx_points)
         elevations  = np.array([x.elevation for x in gpx_points])
-        dz          = elevations[1:] - elevations[:-1]  # change in elevations
+        try:
+            dz          = elevations[1:] - elevations[:-1]  # change in elevations
+        except:
+            print('elevations',elevations)
+            print('--elevations len---',len(elevations))
+            print('---',gpx_points)
+            print('-distances ',distances)
+            print('coords: ', coords)
+            raise RuntimeError
+
         grade       = dz / distances * 100.0            # percent grade!
         grade[np.abs(distances) < 0.1] = 0.0
 
@@ -499,6 +543,8 @@ def process_data(input_gdf,
     # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
     G = TrailMap()
+
+    G.graph['crs'] = _gdf.crs # coordinate system
 
     # list of tuples [(index, {})....]
     G.add_nodes_from( [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes])
