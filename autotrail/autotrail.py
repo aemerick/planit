@@ -334,7 +334,7 @@ class TrailMap(nx.Graph):
 
             for tail in self._adj:
                 for head in self._adj[tail]:
-                    self._adj[tail][head][k+'_scaled'] = (self._adj[tail][head] - min_val) / max_min
+                    self._adj[tail][head][k+'_scaled'] = (self._adj[tail][head][k] - min_val) / max_min
 
         return
 
@@ -367,11 +367,9 @@ class TrailMap(nx.Graph):
             for head in self._adj[tail]:
                 e = self._adj[tail][head]
 
-                # NEED TO RESCALE ALL OF THESE TO SAME MAGNITUDE!!!
-
                 # apply weights for all '_scaled' properties using simple sum for now
                 # need to control this better later. Handle traversed coutn separately
-                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
+                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k.strip('_scaled')]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
                 self._adj[tail][head]['weight'] += self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
                 self._adj[tail][head]['weight'] += self._weight_factors['in_another_route']*max_tail_distance
 
@@ -607,8 +605,12 @@ class TrailMap(nx.Graph):
         # set up totals methods dictionary using input and supply default
         # if not overridden.
         #
+
+        if target_methods is None:
+            target_methods = {}
+        totals_methods = {}
         for k in target_values.keys():
-            totals_methods = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
+            totals_methods[k] = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
 
         #
         # for now - empty dict we can use to copy multiple times if need be
