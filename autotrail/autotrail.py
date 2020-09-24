@@ -284,13 +284,56 @@ class TrailMap(nx.Graph):
                                 'min_altitude','max_altitude','average_altitude',
                                 'traversed_count']
 
+        #
+        # default factors set to zero to turn off
+        # should make setter / getter functions for this
+        # to set properly.
+        #   0 = not used
+        #   > 0 gives relative importance
+        #
+        self._weight_factors = {'distance' : 1,
+                               'elevation_gain' : 1,
+                               'elevation_loss' : 0,   # off
+                               'min_grade' : 0,        # off
+                               'max_grade' : 0,        # off
+                               'traversed_count' : 100} # very on
+
         # self.backtrack_weight =
+
+        return
+
+    def scale_edge_attributes(self):
+        """
+        Scale edge attributes to do weighting properly. This does simple
+        min-max scaling.
+
+        Saves values as a new property in dictionary to preserve old values.
+        This could be done better, but would require some more effort. This
+        is simpler for now. New value is keyed as 'key_scaled'.
+
+        Likely do not want to use traversed_count as rescaled (the way weighting
+        is done now at least)
+        """
+
+        for k in self.edge_attributes: # need error checking for non quantiative values
+
+            min_val = self.reduce_edge_data(k, function=np.min)
+            max_val = self.reduce_edge_data(k, function=np.max)
+            max_min = max_val - min_val
+
+            if (max_min) == 0.0: # likely no data here - don't rescale
+                continue
+
+            for tail in self._adj:
+                for head in self._adj[tail]:
+                    self._adj[tail][head][k+'_scaled'] = (self._adj[tail][head] - min_val) / max_min
 
         return
 
     def ensure_edge_attributes(self):
         """
-        Ensure that edge attributes exist for ALL edges
+        Ensure that edge attributes exist for ALL edges. Just to make sure
+        nothing breaks.
         """
 
         for tail in self._adj:
@@ -310,20 +353,18 @@ class TrailMap(nx.Graph):
         # and how to treat it. Hard code for now
 
         # weightings:
-        f = {'distance' : 1, 'traversed_count' : 10}
-
 
         for tail in self._adj:
-            max_tail_distance = np.max([self._adj[tail][h]['distance'] for h in self._adj[tail]])
+            max_tail_distance = np.max([self._adj[tail][h]['distance_scaled'] for h in self._adj[tail]])
             for head in self._adj[tail]:
                 e = self._adj[tail][head]
-                self._adj[tail][head]['weight'] = f['distance']*e['distance']+\
-                                                  f['traversed_count']*e['traversed_count']*max_tail_distance # increase by size of max_distance off of tail
 
-        # find max weight currently
-        # max_weight = self.reduce_edge_data('weight')
+                # NEED TO RESCALE ALL OF THESE TO SAME MAGNITUDE!!!
 
-        # now apply backtrack weightings to really limit these
+                # apply weights for all '_scaled' properties using simple sum for now
+                # need to control this better later. Handle traversed coutn separately
+                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
+                self._adj[tail][head]['weight'] = self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
 
 
         return
@@ -341,6 +382,7 @@ class TrailMap(nx.Graph):
                     from. Default None -> use all edges (self.edges)
         function : (Optional) Function to apply to the data. This is a
                    function of one argument (the associated list of values).
+                   If function is `None` returns list of data.
                    Default : np.sum
 
         Returns:
@@ -355,9 +397,13 @@ class TrailMap(nx.Graph):
 
 
         values_list = [self.get_edge_data(u,v)[key] for (u,v) in edges]
-        value = function(values_list)
 
-        return value
+        if function is None:
+            return values_list
+        else:
+            value = function(values_list)
+
+            return value
 
     @staticmethod
     def edges_from_nodes(nodes):
