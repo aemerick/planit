@@ -279,8 +279,9 @@ class TrailMap(nx.Graph):
         self.debug = True # debugging print statements
 
 
-        self.edge_attributes = ['distance','weight','max_grade','min_grade',
-                                'avg_grade','elevation_gain','elevation_loss',
+        self.edge_attributes = ['distance','elevation_gain','elevation_loss', 'elevation_change',
+                                'min_grade','max_grade','average_grade',
+                                'min_altitude','max_altitude','average_altitude',
                                 'traversed_count']
 
         # self.backtrack_weight =
