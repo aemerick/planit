@@ -154,9 +154,9 @@ def plot_route(graph,
 
         lat_min, lat_max = (39.97109252073643,40.00096696488513)
         long_min, long_max = (-105.32, -105.27665459438845)
-        fudge = 0.2 * (long_max-long_min)
+        fudge = 0.5 * (long_max-long_min)
         ax.set_xlim( long_min-fudge, long_max+fudge)
-        fudge = 0.20 * (lat_max-lat_min)
+        fudge = 0.50 * (lat_max-lat_min)
         ax.set_ylim( lat_min-fudge, lat_max+fudge)
 
 
