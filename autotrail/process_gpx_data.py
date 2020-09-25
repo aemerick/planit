@@ -1,3 +1,19 @@
+"""
+
+    Author  : Andrew Emerick
+    e-mail  : aemerick11@gmail.com
+    year    : 2020
+
+    LICENSE :GPLv3
+
+
+    Processing the trail data from Boulder County into a form useable for
+    routing. Identifies most trail intersections and converts all segments
+    into interconnected graph of nodes and edges.
+
+    Auto-generated hiking and trail running routes in Boulder, CO
+    based on known trail data and given user-specified contraints.
+"""
 
 import numpy as np
 import pandas as pd

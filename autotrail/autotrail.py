@@ -1,3 +1,15 @@
+"""
+
+    Author  : Andrew Emerick
+    e-mail  : aemerick11@gmail.com
+    year    : 2020
+
+    LICENSE :GPLv3
+
+    Auto-generated hiking and trail running routes in Boulder, CO
+    based on known trail data and given user-specified contraints.
+"""
+
 import numpy as np
 import copy
 import networkx as nx
