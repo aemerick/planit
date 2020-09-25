@@ -25,7 +25,15 @@ _full_data_url   = "https://gis-bouldercounty.opendata.arcgis.com/datasets/3ed10
 
 def fetch_data(outdir = './data'):
     """
-    Get ALL of the data files from URL calls.
+    Get ALL of the data files needed for this project using calls to the
+    urls provided by the Boudler County Geospatial Open Data Site.
+
+    Downloads two datasets:
+        1) Boulder Area Trails (./data/Boulder_Area_Trails.geojson): the full,
+           larger dataset. 
+
+        2) Trails (./data/Trails.geojson): smaller dataset containing only trails
+           owned and operated by Boulder County. Used for testing.
     """
 
     if not os.path.isdir(outdir):
