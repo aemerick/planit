@@ -438,7 +438,7 @@ class TrailMap(nx.Graph):
                                              primary_weight=primary_weight,
                                              reinitialize=reinitialize)
 
-            all_totals[niter], all_routes[niter] = totals[0], routes[0]
+            all_totals[niter], all_routes[niter] = totals, routes
 
 
         # score, sort, and return  - do all for now
@@ -651,6 +651,15 @@ class TrailMap(nx.Graph):
 
         return totals[iroute], possible_routes[iroute]
 
+    def route_properties(self, nodes):
+        """
+        PLACEHOLDER NEED TO DEVELOP FOR FINAL PRODUCT
+        """
+
+        # this function should take in a list of nodes for a possible route
+        # and returns the values of some quantity ALONG that route
+        #
+        return
 
     def get_intermediate_node(self, current_node, target_distance,
                                     epsilon=0.25, shift = 0.1, weight='distance',
