@@ -147,12 +147,12 @@ class TrailMap(nx.Graph):
     traversing algorithm.
     """
 
-    def __init__(self, name = '', *args, **kwargs):
+    def __init__(self, name = '', debug = False, *args, **kwargs):
 
         nx.Graph.__init__(self, *args, **kwargs)
         self.name = name
 
-        self.debug = True # debugging print statements
+        self.debug = debug # debugging print statements
 
 
         self.edge_attributes = ['distance','elevation_gain', 'elevation_loss', 'elevation_change',
@@ -383,7 +383,8 @@ class TrailMap(nx.Graph):
                                target_methods=None, end_node=None,
                                primary_weight = 'distance',
                                reinitialize = True,                # reset 'traversed' counter each iteration
-                               reset_used_counter = False):        # reset used (binary flag) each iteration
+                               reset_used_counter = False,  # reset used (binary flag) each iteration
+                               n_cpus=1):
         """
         Loops over algorithm multiple times to find multiple routes.
         Scores the results of these routes and returns the top
@@ -393,22 +394,43 @@ class TrailMap(nx.Graph):
 
         """
 
+        if iterations < n_routes:
+            iterations = n_routes*2
 
-        all_totals = [] * iterations
-        all_routes = [] * iterations
+
+        all_totals = [None] * iterations
+        all_routes = [None] * iterations
         for niter in range(iterations):
+            totals, routes = self.find_route(start_node, target_values,
+                                             target_methods=target_methods,
+                                             end_node=end_node,
+                                             primary_weight=primary_weight,
+                                             reinitialize=reinitialize)
 
-            all_totals[i], all_routes[i] =\
-                            self.find_route(start_node, target_values,
-                                            target_methods=target_methods,
-                                            end_node=end_node,
-                                            primary_weight=primary_weight,
-                                            reinitialize=reinitialize)
+            all_totals[niter], all_routes[niter] = totals[0], routes[0]
 
 
         # score, sort, and return  - do all for now
+        # for now, score on min fractional error
+        num_routes = len(all_routes)
+        fractional_error = {}
+        for k in all_totals[0].keys():
 
-        return all_totals, all_routes
+            vals                = np.array([all_totals[i][k] for i in range(num_routes)])
+            fractional_error[k] = np.abs(vals - target_values[k]) / target_values[k]
+
+        # now slice it the other way
+        #    better to do average error or max error?
+        average_error = np.zeros(num_routes)
+        for i in range(num_routes):
+            average_error[i] = np.average([ fractional_error[k][i] for k in fractional_error.keys()])
+
+        #
+        # for now, return the best 3
+        #
+        sorted_index = np.argsort(average_error)
+
+        return [all_totals[x] for x in sorted_index[:n_routes]], [all_routes[x] for x in sorted_index[:n_routes]], average_error[:n_routes]
 
     def find_route(self, start_node,
                          target_values,
@@ -624,7 +646,7 @@ class TrailMap(nx.Graph):
 
         Returns:
         ----------
-        next_node        : (int) Node index of next target node 
+        next_node        : (int) Node index of next target node
         """
 
         if G is None:
