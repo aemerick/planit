@@ -226,7 +226,7 @@ class TrailMap(nx.Graph):
 
     def recompute_edge_weights(self, edges=None):
         """
-        Recompute edge weights based off of wether or not we
+        Recompute edge weights based off of whether or not we
         consider various things.
         """
 
@@ -258,12 +258,12 @@ class TrailMap(nx.Graph):
         key      : Property keyword associated with the node. No
                    error checking is done to ensure valid. If key is 'index'
                    checks for 'index' key first, then uses the keyed node number.
-        nodes    : (Optional) iterable nodes tuples [(u,v)...] to combine values
-                    from. Default None -> use all edges (self.edges)
+        nodes    : (Optional) iterable nodes list to combine values
+                    from. Default None -> use all nodes (self.nodes)
         function : (Optional) Function to apply to the data. This is a
                    function of one argument (the associated list of values).
                    If function is `None` returns list of data.
-                   Default : np.sum
+                   Default : None
 
         Returns:
         ---------
@@ -417,6 +417,8 @@ class TrailMap(nx.Graph):
                          primary_weight = 'distance',
                          reinitialize=True):
         """
+        The core piece of autotrails
+
         A smart DUMB algorithm to try and traverse a graph to find the best
         possible path that fits certain constraints.
 
@@ -598,8 +600,32 @@ class TrailMap(nx.Graph):
 
 
     def get_intermediate_node(self, current_node, target_distance,
-                                    G=None, epsilon=0.25, weight='distance',
-                                    shift=0.1):
+                                    epsilon=0.25, shift = 0.1, weight='distance',
+                                    G=None):
+
+        """
+        Search for a node to jump to next in the algorithm given knowledge of
+        the ultimate target distance for the route, and the current node.
+
+        Parameters
+        -----------
+        current_node     :  (int) node index to start from
+        target_distance  :  (float) the TOTAL distance desired in full route
+        epsilon          :  (Optional, float) factor of full route to target for next jump
+                            position. Default : 0.25
+        shift            :  (Optional, float) delta around epsilon used to set
+                            annulus to search within for next point. Default : 0.1
+        weight           :  (optional, string) the edge property to use for
+                            weighting. Default : 'distance'
+        G                :  (optional, TrailMap instance) if provided,
+                            uses this instance of TrailMap to perform search. This
+                            exists to allow passing sub-graph views of self.
+                            If None, uses self. Default : None
+
+        Returns:
+        ----------
+        next_node        : (int) Node index of next target node 
+        """
 
         if G is None:
             G = self
