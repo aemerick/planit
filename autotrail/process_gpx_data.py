@@ -597,6 +597,9 @@ def process_data(input_gdf,
     # keep these on Graph edges. Its why we made them in the first place
     columns_keep.extend(compute_columns)
 
+    # make sure the crs is copied over
+    _gdf.['geometry'].crs = _gdf.crs
+
     # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
     G = TrailMap()
