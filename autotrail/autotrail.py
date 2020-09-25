@@ -1,48 +1,17 @@
-try:
-    # if installed from pip
-    from ortools.graph import pywrapgraph
-except:
-    # from source (ortools/ortools sub-directory)
-    from ortools.ortools.graph import pywrapgraph
-
 import numpy as np
 import copy
 import networkx as nx
 
-import min_cost_flow_test as mcf_test
 import random
 
 random.seed(12345)
 
-#
-# lets try and hack together a dumb algorithm to do this thing
-#
-
-def initialize_mincostflow(start_nodes, end_nodes, capacities, costs):
-    """
-
-    """
-
-    min_cost_flow = pywrapgraph.SimpleMinCostFlow()
-
-    min_cost_flow.SetDesiredCost(desired_cost);
-
-    # Add each arc.
-    for i in range(0, len(start_nodes)):
-      min_cost_flow.AddArcWithCapacityAndUnitCost(start_nodes[i], end_nodes[i],
-                                                  capacities[i], unit_costs[i])
-
-    # Add node supplies.
-
-    for i in range(0, len(supplies)):
-      min_cost_flow.SetNodeSupply(i, supplies[i])
-
-    #if min_cost_flow.SolveWithCostAdjustment() == min_cost_flow.OPTIMAL:
-
-    return min_cost_flow
-
-
 class Graph():
+    """
+    A soon-to-be defunct class originally made for the trail map graphs.
+    Superceded by TrailMap below. Here still because it is used in generating
+    the simple test graphs.
+    """
 
     def __init__(self,node_paths):
 
@@ -89,118 +58,6 @@ class Graph():
         self._G_nx = nx.Graph()
 
         return self._G_nx
-
-
-    def setup_mincostflow(self, start, end, active_arcs=None):
-        """
-        Sets up a mincostflow instance to solve for minimum distance using
-        this graph
-
-        active arcs is a mask denoting the active and inactive arcs (ideally)
-        if not, assume it is a list of the active arcs
-        """
-
-        if active_arcs is None:
-            active_arc_mask = bool
-        elif len(active_arcs) < self.num_arcs:
-            # assume it is a list of indeces
-            active_arc_mask = np.zeros(self.num_arcs, dtype=bool)
-            active_arc_mask[active_arcs] = True
-        else:
-            active_arc_mask = np.array(active_arcs,dtype=bool)
-
-        arc_paths, supply = mcf_test.set_nodes_and_supplies(self._node_paths[active_arc_mask], start, end)
-
-        tails = arc_paths[:,0].to_list()
-        heads = arc_paths[:,1].to_list()
-        capacities = arc_paths[:,2].to_list()
-        costs = arc_paths[:,3].to_list()
-
-        mcf_model = initialize_mincostflow(tails,heads,capacities,costs)
-
-        return mcf_model
-
-
-class GraphPath():
-
-    def __init__(self,parent_graph):
-        """
-
-        """
-
-        self._parent_graph = parent_graph
-
-        #
-        # all arcs are active initially !
-        #    active = available to be traversed
-        #  inactive = invalid (basically does not exist)
-        #
-        self.arc_is_active = np.ones(self.parent_graph.num_arcs)
-
-        # total cost of the path so far
-        self.total_cost = 0
-
-        # arcs traverse along this path.
-        # a list of arc indeces for where we have gone so far
-        self._path_arc_indeces = []
-
-        self.current_head = None
-        self.current_tail = None
-        self.current_arc  = None
-
-        return
-
-    @property
-    def parent_graph(self):
-        return self._parent_graph
-
-    def recompute_compute_total_cost(self):
-        """
-
-        """
-
-        return
-
-    def traverse_arc(self, arcindex):
-        """
-        Add arc to the path
-        """
-
-        self._path_arc_indeces.append(arcindex)
-
-        self._set_current_state()
-
-        return
-
-    def _update_current_state(self):
-        """
-        Update variables to current state.
-        """
-
-        if len(self._path_arc_indeces) == 0:
-            self.current_head = self.current_tail = self.current_arc = None
-            return
-
-        arcindex          = self._path_arc_indeces[-1]
-        self.current_head = self.parent_graph.head(arcindex)
-        self.current_tail = self.parent_graph.tail(arcindex)
-        self.current_arc  = arcindex
-        self.total_cost   = self.total_cost + self.parent_graph.cost(arcindex)
-
-        return
-
-    def reverse_path(self, r=1):
-        """
-        Backtrack the last r nodes and remove the reversed paths from active arcs
-        """
-
-
-        self.arc_is_active[self._path_arc_indeces[r:]] = False
-
-        self._path_arc_indeces = self._path_arc_indeces[:len(self._path_arc_indeces)-r]
-        self._update_current_state()
-
-        return
 
 def define_graph(graphnum=0):
     """
@@ -613,7 +470,7 @@ class TrailMap(nx.Graph):
         if target_methods is None:
             target_methods = {}
 
-        # this will actually house the target methods 
+        # this will actually house the target methods
         totals_methods = {}
         for k in target_values.keys():
             totals_methods[k] = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
