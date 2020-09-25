@@ -618,19 +618,30 @@ def process_data(input_gdf,
 
     # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
-    G = TrailMap()
 
-    G.graph['crs'] = _gdf.crs # coordinate system
-
-    # list of tuples [(index, {})....]
-    G.add_nodes_from( [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes])
-
-    # edges
-    G.add_edges_from( [ (e[0],e[1], _gdf.iloc[i][columns_keep]) for i,e in enumerate(edges)])
+    trail_nodes = [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes]
+    trail_edges = [ (e[0],e[1], _gdf.iloc[i][columns_keep]) for i,e in enumerate(edges)]
 
     if not (outname is None):
+        save_trail_df(outname, _gdf, trail_nodes, trail_edges)
 
-        save_trail_df(outname, _gdf, nodes, edges)
+    return _gdf, trail_nodes, trail_edges # nodes, edges #, lat, long, merge_list
+
+
+def make_trail_map(segmented_gdf, trail_nodes, trail_edges,
+                   outname = None):
+    """
+
+    """
+
+    G = TrailMap()
+    G.graph['crs'] = segmented_gdf.crs # coordinate system
+    # list of tuples [(index, {})....]
+    G.add_nodes_from(trail_nodes)
+    # edges
+    G.add_edges_from(trail_edges)
+
+    if not (outname is None):
         save_graph(outname, G)
 
-    return _gdf, G # nodes, edges #, lat, long, merge_list
+    return G
