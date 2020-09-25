@@ -5,7 +5,9 @@ import os, sys
 def generate_segmented_dataset(inname ='./data/Boulder_Area_Trails.geojson',
                                outname = './data/boulder_area_trail_processed'):
     """
-    ---
+    Given an input geojson file and output file name, loads the Boulder
+    area input file and passes info to the gpx_process function to do the
+    heavy lifting of processing the trail data into segments (edges) and nodes.
     """
 
     if not (os.path.isfile(inname)):
