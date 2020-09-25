@@ -507,7 +507,7 @@ class TrailMap(nx.Graph):
         """
 
         self.scale_edge_attributes()         # needed to do weighting properly
-        self.assign_weights(target_values)   # assigns factors to easily do weighting based on desired constraints
+        self._assign_weights(target_values)   # assigns factors to easily do weighting based on desired constraints
 
 
         # AE: To Do - some way to check if target values are tuples (min,max) or single values!
