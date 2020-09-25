@@ -614,7 +614,7 @@ def process_data(input_gdf,
     columns_keep.extend(compute_columns)
 
     # make sure the crs is copied over
-    _gdf.['geometry'].crs = _gdf.crs
+    _gdf['geometry'].crs = _gdf.crs
 
     # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
