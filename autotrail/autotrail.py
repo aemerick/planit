@@ -167,19 +167,16 @@ class TrailMap(nx.Graph):
         #   0 = not used
         #   > 0 gives relative importance
         #
-        self._weight_factors = {'distance' : 1,
-                               'elevation_gain' : 1,
-                               'elevation_loss' : 0,   # off
-                               'min_grade' : 0,        # off
-                               'max_grade' : 0,        # off
-                               'traversed_count' : 100, # very on
-                               'in_another_route' : 10} # medium on
+        self._weight_factors = {}
+        self._default_weight_factors = {'distance' : 1,
+                                        'elevation_gain' : 0,
+                                        'elevation_loss' : 0,      # off
+                                        'min_grade' : 0,           # off
+                                        'max_grade' : 0,           # off
+                                        'traversed_count' : 10,    # very on
+                                        'in_another_route' : 5}    # medium on
 
-        for k in self.edge_attributes:
-            if not (k in self._weight_factors.keys()):
-                self._weight_factors[k] = 0.0
-
-        # self.backtrack_weight =
+        self._assign_default_weights()
 
         return
 
@@ -224,6 +221,40 @@ class TrailMap(nx.Graph):
                         self._adj[tail][head][k] = 0 # MAKE SURE THIS IS OK VALUE (maybe better to nan?)
         return
 
+    def _assign_default_weights(self):
+        """
+        Maps default weight dictionary onto active weight
+        factor dictionary. Used to initialize these values
+        and reset these to defaults. Sets to zero if not in
+        default dictionary.
+        """
+
+        for k in self.edge_attributes:
+            if not (k in self._default_weight_factors.keys()):
+                self._weight_factors[k] = 0.0
+            else:
+                self._weight_factors[k] = self._default_weight_factors[k]
+
+        return
+
+    def _assign_weights(self, target_values):
+        """
+        Assign weight values based on what is present in
+        the target values dictionary. Turns off those not present.
+        """
+
+        self._assign_default_weights()
+
+        for k in self._weight_factors.keys():
+            if not (k in target_values.keys()):
+                self._weight_factors[k] = 0.0
+
+        # for now... need to fix this...
+        for k in ['traversed_count','in_another_route']:
+            self._weight_factors[k] = self._default_weight_factors[k]
+
+        return
+
     def recompute_edge_weights(self, edges=None):
         """
         Recompute edge weights based off of whether or not we
@@ -242,7 +273,7 @@ class TrailMap(nx.Graph):
 
                 # apply weights for all '_scaled' properties using simple sum for now
                 # need to control this better later. Handle traversed coutn separately
-                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k.replace('_scaled','')]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
+                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k.replace('_scaled', '' )]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
                 self._adj[tail][head]['weight'] += self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
                 self._adj[tail][head]['weight'] += self._weight_factors['in_another_route']*max_tail_distance
 
@@ -437,7 +468,8 @@ class TrailMap(nx.Graph):
                          target_methods = None,
                          end_node=None,
                          primary_weight = 'distance',
-                         reinitialize=True):
+                         reinitialize=True,
+                         epsilon=0.25):
         """
         The core piece of autotrails
 
@@ -474,19 +506,19 @@ class TrailMap(nx.Graph):
 
         """
 
-        self.scale_edge_attributes() # needed to do weighting properly
+        self.scale_edge_attributes()         # needed to do weighting properly
+        self.assign_weights(target_values)   # assigns factors to easily do weighting based on desired constraints
 
 
-        # nrandom = 2 # pick
+        # AE: To Do - some way to check if target values are tuples (min,max) or single values!
+        #             and then incorporate this into the model optimization (min / max)....
+        #             should I just target the max value? instead of midpoint?
 
         # try out a single path
         keep_looping = True
-        max_count    = 10
+        max_count    = 100
         count        = 0
         current_node = start_node
-
-        # fraction of total distance to try in each jump
-        epsilon = 0.25
 
         # do pre-filtering here using views
         # nx.classes.filters.hide_edges([(2,5)])
@@ -589,6 +621,7 @@ class TrailMap(nx.Graph):
 
             for tail,head in next_edges:
                 self._adj[tail][head]['traversed_count'] += 1
+                self._adj[tail][head]['in_another_route'] = 1
 
             # add path
             self._dprint("Possible and next: ", possible_routes[iroute], next_path)
@@ -614,11 +647,9 @@ class TrailMap(nx.Graph):
                 self._print("Reached maximum iterations")
                 keep_looping = False
 
-        #graph.setup_mincostflow()
 
-        # if we're out of the loop
 
-        return totals, possible_routes
+        return totals[iroute], possible_routes[iroute]
 
 
     def get_intermediate_node(self, current_node, target_distance,
