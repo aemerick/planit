@@ -18,7 +18,7 @@ def generate_segmented_dataset(inname ='./data/Boulder_Area_Trails.geojson',
 
     segmented_df, nodes, edges = gpx_process.process_data(gdf,
                                                           outname = outname,
-                                                          threshold_distance=8.0)
+                                                          threshold_distance=4.0)
 
     return segmented_df, nodes, edges
 
