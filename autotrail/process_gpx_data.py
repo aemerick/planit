@@ -42,6 +42,27 @@ except:
 _elevation_data = srtm.get_data()
 
 
+def combine_gpx(segments):
+    """
+    Generates a single shapely LineString object from a
+    list of segments. Assumes that the passed segments are intended to
+    form a continuous line.
+    """
+
+    multi_line  = shapely.geometry.MultiLineString(segments)
+    merged_line = shapely.ops.linemerge(multi_line)
+
+    # this may not always work if there are small gaps. Check for this
+    if isinstance(merged_line,shapely.geometry.MultiLineString):
+
+        # force join the rest of the segments
+        coords = [list(x.coords) for x in merged_line]
+        # Flatten the list of sublists and use it to make a new line
+        merged_line = shapely.geometry.LineString([x for sublist in coords for x in sublist])
+
+    return merged_line
+
+
 # append for shapely linestring
 def LineString_append(self, new_points, mode='append'):
     """
@@ -165,10 +186,10 @@ def gpx_distances(points):
     distance = np.zeros(len(p)-1)
     for i in np.arange(1, len(p)):
         distance[i-1] = gpxpy.geo.distance(p[i][0],p[i][1],p[i][2],
-                                         p[i-1][0],p[i-1][1],p[i-1][2])
+                                           p[i-1][0],p[i-1][1],p[i-1][2])
 
 
-    return distance
+    return np.abs(distance)
 
 
 def traverse_merge_list(ni, merge_list, to_merge):
@@ -540,6 +561,11 @@ def process_data(input_gdf,
         except ValueError:
             continue # already exists
 
+
+    all_grades     = [None]*len(_gdf)
+    all_elevations = [None]*len(_gdf)
+    all_distances  = [None]*len(_gdf)
+
     for i in range(len(edges)):
         #
         # recompute distances there MUST be a better way to do this
@@ -581,24 +607,24 @@ def process_data(input_gdf,
         gpx_segment = add_elevations(gpx_segment)
 
         # point-point distances and elevations
+        #
+        # NOTE: Elevation gain and elevation loss requires defining a direction
+        #       to travel on the trail. By convention the default direction
+        #       will be from the tail -> head, where the node number of tail <
+        #       the node number of head. So elevation_gain becomes
+        #       elevation_loss when travelling from head to tail!!
+        #
+
+        elevation_sign = 1 if (tail < head) else -1
+
         distances   = gpx_distances(gpx_segment.points)
         elevations  = np.array([x.elevation for x in gpx_segment.points])
-        try:
-            dz          = elevations[1:] - elevations[:-1]  # change in elevations
-        except:
-            print('elevations',elevations)
-            print('--elevations len---',len(elevations))
-            print('---',gpx_points)
-            print('-distances ',distances)
-            print('coords: ', coords)
-            return _gdf, gpx_segment
-            raise RuntimeError
-
+        dz          = elevation_sign * (elevations[1:] - elevations[:-1])  # change in elevations
         grade       = dz / distances * 100.0            # percent grade!
         grade[np.abs(distances) < 0.1] = 0.0            # prevent arbitary large grades for short segs with errors
 
         _gdf.at[i,'distance']         = np.sum(distances)
-        _gdf.at[i,'elevation_gain']   = np.sum( dz[dz>0])
+        _gdf.at[i,'elevation_gain']   = np.sum(dz[dz>0])            # see note above!
         _gdf.at[i,'elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
         _gdf.at[i,'elevation_change'] = _gdf.iloc[i]['elevation_gain'] + _gdf.iloc[i]['elevation_loss']
         _gdf.at[i,'min_grade']        = np.min(grade)
@@ -607,11 +633,18 @@ def process_data(input_gdf,
         _gdf.at[i,'min_altitude']     = np.min(elevations)
         _gdf.at[i,'max_altitude']     = np.max(elevations)
         _gdf.at[i,'average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
-        _gdf.at[i,'traversed_count'] = 0
+        _gdf.at[i,'traversed_count']  = 0
 
+        all_elevations[i] = elevations
+        all_grades[i]      = grade
+        all_distances[i]  = distances
+
+    _gdf.insert(5, 'elevations', all_elevations)
+    _gdf.insert(5, 'grades', all_grades)
+    _gdf.insert(5, 'distances', all_distances)
 
     # keep these on Graph edges. Its why we made them in the first place
-    columns_keep.extend(compute_columns)
+    columns_keep.extend(compute_columns + ['elevations','distances','grades'])
 
     # make sure the crs is copied over
     _gdf['geometry'].crs = _gdf.crs
