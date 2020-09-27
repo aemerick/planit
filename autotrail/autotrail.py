@@ -141,6 +141,7 @@ def define_graph(graphnum=0):
     return graph
 
 
+
 class TrailMap(nx.Graph):
     """
     TrailMap class to handle trail Graphs and a
@@ -259,6 +260,8 @@ class TrailMap(nx.Graph):
         """
         Recompute edge weights based off of whether or not we
         consider various things.
+
+        TODO: Test if making these NEGATIVE works (could be useful)
         """
 
         # need a list of what we are considering
@@ -359,7 +362,7 @@ class TrailMap(nx.Graph):
 
         return nearest_indexes, nearest_node_ids
 
-    def reduce_edge_data(self, key, edges=None, function = np.sum):
+    def reduce_edge_data(self, key, edges=None, nodes = None, function = np.sum):
         """
         A nice way to perform some combination function over
         the desired property for all provided edges.
@@ -380,13 +383,21 @@ class TrailMap(nx.Graph):
         value    : Reduced result from `function`
         """
 
-        if edges is None:
-            edges = self.edges
-        elif isinstance(edges,tuple):
-            edges = [edges]
+        if nodes is None:
+            if edges is None:
+                edges = self.edges
+            elif isinstance(edges,tuple):
+                edges = [edges]
+        else:
+            edges = self.edges_from_nodes(nodes)
 
 
-        values_array = np.array([self.get_edge_data(u,v)[key] for (u,v) in edges])
+        values_array = [self.get_edge_data(u,v)[key] for (u,v) in edges]
+
+        try:
+            values_array = np.array(values_array)
+        except:
+            pass
 
         if function is None:
             return values_array
@@ -463,6 +474,60 @@ class TrailMap(nx.Graph):
 
         return [all_totals[x] for x in sorted_index[:n_routes]], [all_routes[x] for x in sorted_index[:n_routes]], average_error[:n_routes]
 
+
+    def is_route_feasible(self, start_node, end_node, target_values, target_method):
+        """
+        Perform a simple sanity check to see if the route is viable. Uses
+        nx.shortest_path to determine if nodes even connect, returning False if
+        they do not. If they do, prints warnings if the shortest path does
+        not meet the contraints, but only returns False if it cannot meet the
+        distance constraint.
+
+        Parameters
+        -----------
+        start_node : (int)   start point
+        end_node   : (int)   end point
+        target_values : (dict) dictionary of targets and desired values
+        target_method : (dict) dictionary of how to evaluate targets
+
+        Returns:
+        -----------
+        feasible  : (bool) True if route is possible AND within distance.
+                    (even if other constrains may not be satisfied). False if
+                    not possible or fails distance constraint.
+        """
+
+        if start_node == end_node:
+            if len(self.nodes[start_node]['edges']) > 0:
+                return True
+            else:
+                self._myprint("You seem to have picked a start point that does not connect to anything")
+                return False
+
+        try:
+            route = nx.shortest_path(self, start_node, end_node)
+        except nx.NetworkXNoPath:
+            self._myprint("Start and end points do not connect on a known trail: ", start_node, end_node)
+            return False
+
+
+        # if route IS feasible, see if we fit within the constraints
+
+        route_properties = self.route_properties(nodes, verbose=False)
+
+        for k in target_values.keys():
+            val = target_method[k](route_properties[k])
+            if val > target_values[k]:
+                self._myprint("WARNING: Route may not be feasible within constraint on ", k)
+                self._myprint("Desired " + k + " is %f, while shortest path yields %f"%(target_values[k],val))
+
+                if k == 'distance':
+                    # actually fail on this
+                    self._myprint("Route not possible within desired distance. Please try again with different parameters")
+                    return False
+
+        return True
+
     def find_route(self, start_node,
                          target_values,
                          target_methods = None,
@@ -505,6 +570,32 @@ class TrailMap(nx.Graph):
                           in graph (if present). Default : True
 
         """
+        default_target_methods  = {'distance' : np.sum,       'max_grade'      : np.max,
+                                   'min_grade' : np.min,      'average_grade'  : np.average,
+                                   'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
+                                   'traversed_count' : np.sum}
+
+        #
+        # set up totals methods dictionary using input and supply default
+        # if not overridden.
+        #
+
+        if target_methods is None:
+            target_methods = {}
+
+        # this will actually house the target methods
+        totals_methods = {}
+        for k in target_values.keys():
+            totals_methods[k] = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
+
+
+        #
+        # do some initial error checking to make sure that things CAN work
+        #
+        if start_node != end_node:
+            if not (self.is_route_feasible(start_node, end_node, target_values, target_methods)):
+                self._print("Route not feasible. Please try different input")
+                return None, None
 
         self.scale_edge_attributes()         # needed to do weighting properly
         self._assign_weights(target_values)   # assigns factors to easily do weighting based on desired constraints
@@ -525,23 +616,6 @@ class TrailMap(nx.Graph):
         # subG = nx.subgraph_view(G, filter_edge = f)
         #
         #
-        default_target_methods  = {'distance' : np.sum,       'max_grade'      : np.max,
-                                   'min_grade' : np.min,      'average_grade'  : np.average,
-                                   'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
-                                   'traversed_count' : np.sum}
-
-        #
-        # set up totals methods dictionary using input and supply default
-        # if not overridden.
-        #
-
-        if target_methods is None:
-            target_methods = {}
-
-        # this will actually house the target methods
-        totals_methods = {}
-        for k in target_values.keys():
-            totals_methods[k] = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
 
         #
         # for now - empty dict we can use to copy multiple times if need be
@@ -557,6 +631,7 @@ class TrailMap(nx.Graph):
 
         if reinitialize:
             # reset some things
+            # WARNING: LOOPING OVER ADJ LOOPS OVER ALL EDGES TWICE
             for t in self._adj:
                 for h in self._adj[t]:
                     self._adj[t][h]['traversed_count'] = 0
@@ -651,14 +726,30 @@ class TrailMap(nx.Graph):
 
         return totals[iroute], possible_routes[iroute]
 
-    def route_properties(self, nodes):
+    def route_properties(self, nodes=None, edges = None, verbose=True):
         """
         PLACEHOLDER NEED TO DEVELOP FOR FINAL PRODUCT
         """
 
+        if (nodes is None) and (edges is None):
+            self._print("Must supply either nodes list or edge list for route")
+            raise ValueError
+
+        if edges is None:
+            edges = self.edges_from_nodes(nodes)
+
         # this function should take in a list of nodes for a possible route
         # and returns the values of some quantity ALONG that route
-        #
+
+        print_keys = ['distance', 'elevation_gain', 'elevation_loss',
+                      'min_grade', 'max_grade']
+
+        # traverse the graph
+        #for (u,v) in edges:
+        #e_sign =
+
+            #self.edges[(u,v)]
+
         return
 
     def get_intermediate_node(self, current_node, target_distance,
