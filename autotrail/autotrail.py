@@ -203,9 +203,8 @@ class TrailMap(nx.Graph):
             if (max_min) == 0.0: # likely no data here - don't rescale
                 continue
 
-            for tail in self._adj:
-                for head in self._adj[tail]:
-                    self._adj[tail][head][k+'_scaled'] = (self._adj[tail][head][k] - min_val) / max_min
+            for e in self.edges(data=True):
+                e[2][k+'_scaled'] = (e[2][k]-min_val)/max_min
 
         return
 
@@ -215,11 +214,10 @@ class TrailMap(nx.Graph):
         nothing breaks.
         """
 
-        for tail in self._adj:
-            for head in self._adj[tail]:
-                for k in self.edge_attributes:
-                    if not (k in self._adj[tail][head].keys()):
-                        self._adj[tail][head][k] = 0 # MAKE SURE THIS IS OK VALUE (maybe better to nan?)
+        for e in self.edges(data=True):
+            for k in self.edge_attributes:
+                if not (k in e[2].keys()):
+                    e[2][k] = 0            # MAKE SURE THIS IS OK VALUE (maybe better to nan?)
         return
 
     def _assign_default_weights(self):
@@ -256,7 +254,7 @@ class TrailMap(nx.Graph):
 
         return
 
-    def recompute_edge_weights(self, edges=None):
+    def recompute_edge_weights(self, edges = None, features = None):
         """
         Recompute edge weights based off of whether or not we
         consider various things.
@@ -268,17 +266,41 @@ class TrailMap(nx.Graph):
         # and how to treat it. Hard code for now
 
         # weightings:
+        if edges is None:
+            edges = self.edges(data=True)
 
-        for tail in self._adj:
-            max_tail_distance = np.max([self._adj[tail][h]['distance_scaled'] for h in self._adj[tail]])
-            for head in self._adj[tail]:
-                e = self._adj[tail][head]
+        if features is None:
+            features = ['distance', 'elevation_gain', 'elevation_loss']
 
-                # apply weights for all '_scaled' properties using simple sum for now
-                # need to control this better later. Handle traversed coutn separately
-                self._adj[tail][head]['weight'] = np.sum([ self._weight_factors[k.replace('_scaled', '' )]*e[k] for k in e.keys() if ((k != 'traversed_count_scaled') and ('scaled' in k)) ])
-                self._adj[tail][head]['weight'] += self._weight_factors['traversed_count']*e['traversed_count']*max_tail_distance ## increase by size of max_distance off of tail
-                self._adj[tail][head]['weight'] += self._weight_factors['in_another_route']*max_tail_distance
+        for u,v,d in edges:
+
+            max_tail_distance = np.max([self._adj[u][v]['distance_scaled'] for v in self._adj[u]])
+
+            # apply weights for all '_scaled' properties using simple sum for now
+            # need to control this better later. Handle traversed coutn separately
+
+
+            d['weight'] = self._weight_factors['distance'] * d['distance_scaled']
+
+            # direction of travel convention, gain is gain when u < v,
+            # otherwise it needs to be flipped with loss.
+            if u < v:
+                d['weight'] += self._weight_factors['elevation_gain'] * d['elevation_gain_scaled']
+                d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_loss_scaled']
+            else:
+                d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_gain_scaled']
+                d['weight'] += self._weight_factors['elevation_gain'] * d['elevation_loss_scaled']
+
+            #
+            # Backtrack penalty
+            #
+            d['weight'] += self._weight_factors['traversed_count']*d['traversed_count']*max_tail_distance
+
+            #
+            # Meta penalty for use when planning multiple routes at once
+            #
+            d['weight'] += self._weight_factors['in_another_route']*d['in_another_route']*max_tail_distance
+
 
         return
 
@@ -662,9 +684,8 @@ class TrailMap(nx.Graph):
         if reinitialize:
             # reset some things
             # WARNING: LOOPING OVER ADJ LOOPS OVER ALL EDGES TWICE
-            for t in self._adj:
-                for h in self._adj[t]:
-                    self._adj[t][h]['traversed_count'] = 0
+            for e in self.edges(data=True):
+                e[2]['traversed_count'] = 0
 
             self.recompute_edge_weights()
 
