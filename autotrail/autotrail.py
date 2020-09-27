@@ -15,8 +15,15 @@ import copy
 import networkx as nx
 
 import random
+import shapely
+import gpxpy
+import process_gpx_data as gpx_process
 
 random.seed(12345)
+
+
+m_to_ft = 3.28084
+m_to_mi = 0.000621371
 
 class Graph():
     """
@@ -304,6 +311,48 @@ class TrailMap(nx.Graph):
 
         return
 
+    def write_gpx_file(self, outname, nodes = None, edges = None):
+        """
+        Convert route (defined by connected nodes or edges) to a
+        GPX .xml file containing lat and long coordinates with
+        elevation.
+        """
+
+        if (nodes is None) and (edges is None):
+            self._print("Must provide either nodes or edges")
+            raise RuntimeError
+
+        if edges is None:
+            edges = self.edges_from_nodes(nodes)
+
+        route_line = self.reduce_edge_data('geometry', edges=edges, function = gpx_process.combine_gpx)
+
+        #
+        # Take points from route_line (LineString object) and place into a
+        # gpx track object
+        #
+        gpx = gpxpy.gpx.GPX()
+
+        gpx_track = gpxpy.gpx.GPXTrack()
+        gpx.tracks.append(gpx_track)
+
+        gpx_segment = gpxpy.gpx.GPXTrackSegment()
+        gpx_track.segments.append(gpx_segment)
+
+        #
+        # Linestings are being saved with (long,lat) coordinates but GPX
+        # needs (lat,long). Careful!
+        #
+        gpx_segment.points.extend( [gpxpy.gpx.GPXTrackPoint(x[1],x[0], elevation=x[2]) for x in route_line.coords])
+
+
+        with open(outname, 'w') as f:
+            f.write( gpx.to_xml())
+
+
+        return
+
+
     def reduce_node_data(self, key, nodes=None, function = None):
         """
         A nice way to perform some combination function over
@@ -400,6 +449,8 @@ class TrailMap(nx.Graph):
         if u < v:
             return result
 
+        # everything below happens ONLY if we need to flip orientation
+
         result = copy.deepcopy(result)
 
         if 'elevation_gain' in result.keys():
@@ -411,6 +462,13 @@ class TrailMap(nx.Graph):
             val = result['max_grade']
             result['min_grade'] = -1.0 * result['max_grade']
             result['max_grade'] = -1.0 * result['min_grade']
+
+        if 'geometry' in result.keys():
+            result['geometry'] = shapely.geometry.LineString(result['geometry'].coords[::-1])
+
+        for k in ['elevations','distances','grades']:
+            if k in result.keys():
+                result[k] = ','.join(result[k].split(',')[::-1]) # dumb!
 
         return result
 
@@ -445,6 +503,10 @@ class TrailMap(nx.Graph):
 
 
         values_array = [self.get_edge_data(u,v)[key] for (u,v) in edges]
+
+        # only because this is stored (ugh) as a giant string. combine into floats
+        if key in ['elevations','distances','grades']:
+            values_array = [float(x) for sublist in values_array for x in sublist.split(',')]
 
         try:
             values_array = np.array(values_array)
@@ -777,9 +839,12 @@ class TrailMap(nx.Graph):
 
         return totals[iroute], possible_routes[iroute]
 
-    def route_properties(self, nodes=None, edges = None, verbose=True):
+    def route_properties(self, nodes=None, edges = None,
+                               verbose=True, header=True, units = 'english'):
         """
-        PLACEHOLDER NEED TO DEVELOP FOR FINAL PRODUCT
+        Given a route (defined as sequence of nodes or edges) computes
+        summary statistics for that route. If verbose is ON prints out
+        those statistics.
         """
 
         if (nodes is None) and (edges is None):
@@ -791,17 +856,44 @@ class TrailMap(nx.Graph):
 
         # this function should take in a list of nodes for a possible route
         # and returns the values of some quantity ALONG that route
+        elevations = self.reduce_edge_data('elevations', edges=edges, function=None)
+        distances = self.reduce_edge_data('distance', edges=edges, function=None)
 
-        print_keys = ['distance', 'elevation_gain', 'elevation_loss',
-                      'min_grade', 'max_grade']
+        repeated = 0.0
+        for i, (u,v) in enumerate(edges):
+            if ((u,v) in edges[:i]) or ((u,v) in edges[i+1:]):
+                repeated += distances[i]
 
-        # traverse the graph
-        #for (u,v) in edges:
-        #e_sign =
+        totals = { 'distance' : np.sum(distances),
+                   'elevation_gain' : self.reduce_edge_data('elevation_gain', edges=edges, function=np.sum),
+                   'elevation_loss' : self.reduce_edge_data('elevation_loss', edges=edges, function=np.sum),
+                   'min_grade' : self.reduce_edge_data('min_grade', edges=edges, function=np.min),
+                   'max_grade' : self.reduce_edge_data('max_grade', edges=edges, function=np.max),
+                   'max_altitude' : np.max(elevations),
+                   'min_altitude' : np.min(elevations)}
+        totals['repeated_percent'] = repeated / totals['distance'] * 100.0
 
-            #self.edges[(u,v)]
+        if units == 'english':
+            du = '(mi)'
+            eu = '(ft)'
+            totals['distance'] = totals['distance'] * m_to_mi
+            for k in ['elevation_gain','elevation_loss','max_altitude','min_altitude']:
+                totals[k] = totals[k] * m_to_ft
 
-        return
+        else:
+            du = '(km)'
+            eu = '(m)'
+            totals['distance'] = totals['distance'] / 1000.0
+
+        if verbose and header:
+            print("%13s %13s %13s %13s %13s %13s %13s %13s"%("Distance "+du, "Elev. + "+eu, "Elev. - "+eu, "Min Elev. "+eu, "Max Elev. "+eu, "Min Grade (%)", "Max Grade (%)", "Repeated (%)"))
+
+        if verbose:
+            print("%13.2f %13i %13i %13i %13i %13.2f %13.2f %13.2f"%(totals['distance'], totals['elevation_gain'], totals['elevation_loss'],
+                                                                      totals['min_altitude'],totals['max_altitude'],totals['min_grade'],totals['max_grade'],
+                                                                      totals['repeated_percent']))
+
+        return totals
 
     def get_intermediate_node(self, current_node, target_distance,
                                     epsilon=0.25, shift = 0.1, weight='distance',
