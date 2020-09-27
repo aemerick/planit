@@ -23,6 +23,7 @@ def generate_segmented_dataset(inname ='./data/Boulder_Area_Trails.geojson',
     return segmented_df, nodes, edges
 
 def make_graph(outname='./data/boulder_area_trail_processed',
+               raw_data = './data/Boulder_Area_Trails.geojson',
                from_scratch=True):
     """
     Generate the new dataset containing fully segmented trail data
@@ -32,7 +33,7 @@ def make_graph(outname='./data/boulder_area_trail_processed',
 
 
     if from_scratch:
-        segment_df, nodes, edges = generate_segmented_dataset()
+        segment_df, nodes, edges = generate_segmented_dataset(raw_data, outname)
     else:
         if not os.path.isfile(outname + '.geojson'):
             print("Data file not found: ", outname + '.geojson')
@@ -40,7 +41,7 @@ def make_graph(outname='./data/boulder_area_trail_processed',
 
         segment_df, nodes, edges = gpx_process.load_trail_df(outname)
 
-    trail_map = gpx_process.make_trail_map(segment_df, nodes, edges)
+    trail_map = gpx_process.make_trail_map(segment_df, nodes, edges, outname = outname)
 
     return segment_df, trail_map
 
@@ -51,4 +52,14 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         from_scratch = (sys.argv[1] == "True")
 
-    make_graph(from_scratch = from_scratch)
+
+    outname='./data/boulder_area_trail_processed'
+    raw_data = './data/Boulder_Area_Trails.geojson'
+
+    if len(sys.argv) > 2:
+        if sys.argv[2] == 'small':
+
+            raw_data = './data/Trails.geojson'
+            outname = './data/small_trails_processed'
+
+    make_graph(from_scratch = from_scratch, outname = outname, raw_data=raw_data)
