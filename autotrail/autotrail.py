@@ -362,6 +362,36 @@ class TrailMap(nx.Graph):
 
         return nearest_indexes, nearest_node_ids
 
+    def get_edge_data(self, u, v, default=None):
+        """
+        Overloading `get_edge_data` from the Graph class in order to properly
+        handle directionality in some of the edge properties. In particular,
+        checks for elevation_gain, elevation_loss, max_grade, and min_grade
+        values. If any of these exist, it ensures they are correct. By convention,
+        if u < v, elevation_gain and elevation_loss are correct, otherwise
+        they are switched. If this happens, switch is done in a new copy.
+
+        """
+
+        result = super(TrailMap, self).get_edge_data(u,v,default)
+
+        if u < v:
+            return result
+
+        result = copy.deepcopy(result)
+
+        if 'elevation_gain' in result.keys():
+            val = result['elevation_gain'] * 1.0
+            result['elevation_loss'] = result['elevation_gain']
+            result['elevation_gain'] = val
+
+        if 'min_grade' in result.keys():
+            val = result['max_grade']
+            result['min_grade'] = -1.0 * result['max_grade']
+            result['max_grade'] = -1.0 * result['min_grade']
+
+        return result
+
     def reduce_edge_data(self, key, edges=None, nodes = None, function = np.sum):
         """
         A nice way to perform some combination function over
