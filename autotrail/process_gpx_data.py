@@ -107,9 +107,11 @@ setattr(shapely.geometry.LineString, "append", LineString_append)
 setattr(shapely.geometry.LineString, "prepend", LineString_prepend)
 
 
-def add_elevations(gpx_segment):
+def add_elevations(gpx, smooth=False):
     """
-    Given a gpxpy gpx_segment object, adds in elevations to all points (overwriting
+    WARNING: ASSUMES ONLY A SINGLE TRACK AND SEGMENT IN GPX OBJECT
+
+    Given a gpxpy gpx object, adds in elevations to all points (overwriting
     any existing values). Since the srtm elevation can sometimes return None
     for certain points (unknown why) does some error checking to make sure
     that points give valid elevation. Does interpolation / flattening to
@@ -119,7 +121,9 @@ def add_elevations(gpx_segment):
     """
 
     # this gives `None` in some cases (argh!)
-    _elevation_data.add_elevations(gpx_segment) #, smooth=True)
+    _elevation_data.add_elevations(gpx, smooth=smooth) #, smooth=True)
+
+    gpx_segment = gpx.tracks[0].segments[0]
 
     elevations = np.array([x.elevation for x in gpx_segment.points])
 
@@ -164,7 +168,7 @@ def add_elevations(gpx_segment):
     for i in range(len(gpx_segment.points)):
         gpx_segment.points[i].elevation = elevations[i]
 
-    return gpx_segment # just in case
+    return gpx # just in case
 
 
 def gpx_distances(points):
@@ -482,6 +486,7 @@ def process_data(input_gdf,
     mask = np.zeros(len(merge_list), dtype=bool)
     edge_relabel = {i:i for i in range(numnodes)} # use to relabel nodes in edges list later
 
+    new_node_index = numnodes
     for ni in range(numnodes):
 
         if (len(merge_list[ni]) == 0) or mask[ni]: # empty or already completed
@@ -510,7 +515,7 @@ def process_data(input_gdf,
 
         nodes_select = [nodes[nj] for nj in to_merge]
 
-        new_node  = {'index' : np.min(to_merge),
+        new_node  = {'index' : new_node_index,
                      'lat'   : np.average([x['lat'] for x in nodes_select]),
                      'long'  : np.average([x['long'] for x in nodes_select]),
                      'edges' : [x['edges'] for x in nodes_select] }
@@ -525,6 +530,9 @@ def process_data(input_gdf,
         to_append.append(new_node)
         # add to drop list
         to_drop.extend(to_merge)
+
+        new_node_index += 1
+
 
     # print('append: ', to_append)
     print("Modifying Nodes. Creating %i new nodes from merging %i together"%(len(to_append),len(to_drop)))
@@ -575,36 +583,85 @@ def process_data(input_gdf,
         #
         # make a gpx segment from the coordinates
         #
-        gpx_segment = gpxpy.gpx.GPXTrackSegment()
         tail,head = edges[i]
-        taili = [i for i,n in enumerate(nodes) if n['index'] == tail][0]
-        headi = [i for i,n in enumerate(nodes) if n['index'] == head][0]
+
+        #
+        # by convention, lets make it such that the tail of every segment
+        # starts at the node with the lower index (tail < head!)
+        # tail and head are the node IDs, NOT their number in the node list
+        if tail > head:
+            val = head*1
+            tail = head
+            head = tail
+
+        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
+            print(tail, head, taili, headi)
+            print(tail_coords)
+            print(head_coords)
+            print(tail_to_left)
+            print(tail_to_right)
+            print(_gdf['geometry'][i].coords[0], _gdf['geometry'][i].coords[-1])
+
+        #
+        # taili and headi are the list indexes NOT the node ID's
+        #
+        taili = [j for j,n in enumerate(nodes) if n['index'] == tail][0]
+        headi = [j for j,n in enumerate(nodes) if n['index'] == head][0]
 
         #print(tail,head, taili, headi)
 
         tail_coords = (nodes[taili]['long'], nodes[taili]['lat'])
         head_coords = (nodes[headi]['long'], nodes[headi]['lat'])
 
-        # make sure this is ordered correctly
-        d1 = np.sqrt( (tail_coords[0] - _gdf['geometry'][i].coords[0][0])**2 +\
-                      (tail_coords[1] - _gdf['geometry'][i].coords[0][1])**2)
 
-        d2 = np.sqrt( (tail_coords[0] - _gdf['geometry'][i].coords[-1][0])**2 +\
-                      (tail_coords[1] - _gdf['geometry'][i].coords[-1][1])**2)
+        # now, check and see if the geometry needs to be flipped:
 
-        if d2 < d1: # flip!
-            tail_coords = (nodes[headi]['long'], nodes[headi]['lat'])
-            head_coords = (nodes[taili]['long'], nodes[taili]['lat'])
+        tail_to_left  = gpxpy.geo.distance(tail_coords[1],
+                                           tail_coords[0],
+                                           0.0,   # elevation doesn't matter here
+                                           _gdf['geometry'][i].coords[0][1],
+                                           _gdf['geometry'][i].coords[0][0],
+                                           0.0)
 
-        new_line = _gdf['geometry'][i].append(head_coords)
+        tail_to_right = gpxpy.geo.distance(tail_coords[1],
+                                           tail_coords[0],
+                                           0.0,   # elevation doesn't matter here
+                                           _gdf['geometry'][i].coords[-1][1],
+                                           _gdf['geometry'][i].coords[-1][0],
+                                           0.0)
+
+
+        flip_geometry = False
+        if tail_to_right < tail_to_left: # flip the geometry
+            flip_geometry = True
+            _gdf.at[i,'geometry'] = shapely.geometry.LineString( _gdf['geometry'][i].coords[::-1])
+
+        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
+            print("-- after flipping --")
+            print( _gdf.at[i,'geometry'].coords[0], _gdf.at[i,'geometry'].coords[-1])
+
+        new_line = _gdf['geometry'][i].append(head_coords) ##
         new_line = new_line.prepend(tail_coords)
 
+        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
+            print("-- after append --")
+            print( new_line.coords[0], new_line.coords[-1])
+
         #print(coords[0], coords[1], coords[-2],coords[-1])
+        gpx = gpxpy.gpx.GPX()
+
+        gpx_track = gpxpy.gpx.GPXTrack()
+        gpx.tracks.append(gpx_track)
+
+        gpx_segment = gpxpy.gpx.GPXTrackSegment()
+        gpx_track.segments.append(gpx_segment)
+
         gpx_points  = [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in new_line.coords]
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
-        gpx_segment = add_elevations(gpx_segment)
+        gpx = add_elevations(gpx, smooth=True)
+        gpx_segment = gpx.tracks[0].segments[0]
 
         # point-point distances and elevations
         #
@@ -615,16 +672,15 @@ def process_data(input_gdf,
         #       elevation_loss when travelling from head to tail!!
         #
 
-        elevation_sign = 1 if (tail < head) else -1
-
         distances   = gpx_distances(gpx_segment.points)
         elevations  = np.array([x.elevation for x in gpx_segment.points])
-        dz          = elevation_sign * (elevations[1:] - elevations[:-1])  # change in elevations
+        dz          = (elevations[1:] - elevations[:-1])  # change in elevations
         grade       = dz / distances * 100.0            # percent grade!
         grade[np.abs(distances) < 0.1] = 0.0            # prevent arbitary large grades for short segs with errors
 
 
-        _gdf.at[i,'geometry'] = shapely.geometry.LineString([(x.latitude,x.longitude,x.elevation) for x in gpx_segment.points])
+        # save with elevations
+        _gdf.at[i,'geometry']         = shapely.geometry.LineString([(x.longitude,x.latitude,x.elevation) for x in gpx_segment.points])
         _gdf.at[i,'distance']         = np.sum(distances)
         _gdf.at[i,'elevation_gain']   = np.sum(dz[dz>0])            # see note above!
         _gdf.at[i,'elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
@@ -664,7 +720,7 @@ def process_data(input_gdf,
     # nx_graph_from_gdf(_gdf)
     # lets try and make the graph
 
-    trail_nodes = [(n['index'], {k : n[k] for k in ['lat','long','edges']}) for n in nodes]
+    trail_nodes = [(n['index'], {k : n[k] for k in ['lat','long','edges','index']}) for n in nodes]
     trail_edges = [ (e[0],e[1], _gdf.iloc[i][columns_keep]) for i,e in enumerate(edges)]
 
     if not (outname is None):
