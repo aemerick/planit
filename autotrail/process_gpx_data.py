@@ -623,6 +623,8 @@ def process_data(input_gdf,
         grade       = dz / distances * 100.0            # percent grade!
         grade[np.abs(distances) < 0.1] = 0.0            # prevent arbitary large grades for short segs with errors
 
+
+        _gdf.at[i,'geometry'] = shapely.geometry.LineString([(x.latitude,x.longitude,x.elevation) for x in gpx_segment.points])
         _gdf.at[i,'distance']         = np.sum(distances)
         _gdf.at[i,'elevation_gain']   = np.sum(dz[dz>0])            # see note above!
         _gdf.at[i,'elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
@@ -635,10 +637,20 @@ def process_data(input_gdf,
         _gdf.at[i,'average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
         _gdf.at[i,'traversed_count']  = 0
 
-        all_elevations[i] = elevations
-        all_grades[i]      = grade
-        all_distances[i]  = distances
+        # apparenlty geopandas uses fiona to do writing to file
+        # which DOESN"T support storing lists / np arrays into individual
+        # cells. The below is a workaround (and a sin).. converting to a string
+        #
 
+        all_elevations[i]  = ','.join(["%5.3E"%(a) for a in elevations])
+        all_grades[i]      = ','.join(["%5.3E"%(a) for a in grade])
+        all_distances[i]   = ','.join(["%5.3E"%(a) for a in distances])
+
+    #_gdf.insert(5, 'elevations', all_elevations)
+
+
+
+    #_gdf['elevations'] = all_elevations
     _gdf.insert(5, 'elevations', all_elevations)
     _gdf.insert(5, 'grades', all_grades)
     _gdf.insert(5, 'distances', all_distances)
