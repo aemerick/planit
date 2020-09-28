@@ -698,9 +698,12 @@ def process_data(input_gdf,
         # apparenlty geopandas uses fiona to do writing to file
         # which DOESN"T support storing lists / np arrays into individual
         # cells. The below is a workaround (and a sin).. converting to a string
-        all_elevations[i]  = ','.join(["%5.3E"%(a) for a in elevations])
-        all_grades[i]      = ','.join(["%5.3E"%(a) for a in grade])
-        all_distances[i]   = ','.join(["%5.3E"%(a) for a in distances])
+        #
+        # MAKING ELEVATIONS SAME LENGTH AS DISTANCES!!
+        #
+        all_elevations[i]  = ','.join(["%6.2E"%(a) for a in 0.5*(elevations[1:]+elevations[:-1])])
+        all_grades[i]      = ','.join(["%6.2E"%(a) for a in grade])
+        all_distances[i]   = ','.join(["%6.2E"%(a) for a in distances])
 
     _gdf.insert(5, 'elevations', all_elevations)
     _gdf.insert(5, 'grades', all_grades)
