@@ -446,6 +446,7 @@ class TrailMap(nx.Graph):
 
         result = super(TrailMap, self).get_edge_data(u,v,default)
 
+
         if u < v:
             return result
 
@@ -455,8 +456,8 @@ class TrailMap(nx.Graph):
 
         if 'elevation_gain' in result.keys():
             val = result['elevation_gain'] * 1.0
-            result['elevation_loss'] = result['elevation_gain']
-            result['elevation_gain'] = val
+            result['elevation_loss'] = result['elevation_gain']*1.0
+            result['elevation_gain'] = val*1.0
 
         if 'min_grade' in result.keys():
             val = result['max_grade']
