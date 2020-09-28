@@ -44,23 +44,29 @@ _elevation_data = srtm.get_data()
 
 def combine_gpx(segments):
     """
-    Generates a single shapely LineString object from a
+    Generates a single shapely LineString objectf from a
     list of segments. Assumes that the passed segments are intended to
     form a continuous line.
     """
 
-    multi_line  = shapely.geometry.MultiLineString(segments)
-    merged_line = shapely.ops.linemerge(multi_line)
+    coords = [list(x.coords) for x in segments]
 
-    # this may not always work if there are small gaps. Check for this
-    if isinstance(merged_line,shapely.geometry.MultiLineString):
-
-        # force join the rest of the segments
-        coords = [list(x.coords) for x in merged_line]
-        # Flatten the list of sublists and use it to make a new line
-        merged_line = shapely.geometry.LineString([x for sublist in coords for x in sublist])
+    merged_line = shapely.geometry.LineString([x for sublist in coords for x in sublist])
 
     return merged_line
+
+#    multi_line  = shapely.geometry.MultiLineString(segments)
+#    merged_line = shapely.ops.linemerge(multi_line)
+
+    # this may not always work if there are small gaps. Check for this
+#    if isinstance(merged_line,shapely.geometry.MultiLineString):
+
+        # force join the rest of the segments
+#        coords = [list(x.coords) for x in merged_line]
+        # Flatten the list of sublists and use it to make a new line
+#        merged_line = shapely.geometry.LineString([x for sublist in coords for x in sublist])
+
+#    return merged_line
 
 
 # append for shapely linestring
@@ -88,10 +94,10 @@ def LineString_append(self, new_points, mode='append'):
 
     if mode == 'append':
         if self.coords[-1] == connect_coord:
-            new_points.pop(0)
+            new_points.pop(connect_index)
     elif mode == 'prepend':
         if self.coords[0] == connect_coord:
-            new_points.pop(-1)
+            new_points.pop(connect_index)
 
     if len(new_points) == 0:
         return self
@@ -127,7 +133,7 @@ def add_elevations(gpx, smooth=False):
 
     elevations = np.array([x.elevation for x in gpx_segment.points])
 
-    is_none = elevations == None
+    is_none = (elevations == None)
     if all(is_none):
         print("WARNING: Found a segment with all failed elevations. Setting to hard-coded value for now")
         elevations = np.ones(len(elevations)) * 1624.0 # hard code to Boulder cause. why the hell not (BAD)
@@ -135,6 +141,8 @@ def add_elevations(gpx, smooth=False):
         #raise RuntimeError
 
     if any(is_none):
+        print("WARNING: Found a segment with some failed elevations. Trying to fix.")
+
         not_none = np.logical_not(is_none)
 
         # need to fix. just interpolate or copy
@@ -167,6 +175,9 @@ def add_elevations(gpx, smooth=False):
     # copy back to gpx points
     for i in range(len(gpx_segment.points)):
         gpx_segment.points[i].elevation = elevations[i]
+
+    if any(elevations == None):
+        print("WARNING: Segment still has bad values for elevation after fixing")
 
     return gpx # just in case
 
@@ -350,7 +361,7 @@ def process_data(input_gdf,
                  middle of a segment (1). In this case, split 1 into new
                  segments joined at A.
 
-        -----) Long term todo: check for nodes that can be joined by short distances
+        -----) Long term TODO: check for nodes that can be joined by short distances
                on road that are not in trail data.
 
         3) Computes edge quantities we WANT for the networkx graph solve
@@ -457,6 +468,9 @@ def process_data(input_gdf,
     lat  = [n['lat'] for n in nodes]
     long = [n['long'] for n in nodes]
     elev = [_elevation_data.get_elevation(x,y) for (x,y) in zip(lat,long)]
+    for i,val in enumerate(elev):
+        nodes[i]['elevation'] = val
+
 
     numnodes    = len(nodes)
     merge_list  = [[] for _ in range(numnodes)] # for each node, list of nodes merging with
@@ -516,6 +530,7 @@ def process_data(input_gdf,
         nodes_select = [nodes[nj] for nj in to_merge]
 
         new_node  = {'index' : new_node_index,
+                     'elevation' : np.average([x['elevation'] for x in nodes_select]),
                      'lat'   : np.average([x['lat'] for x in nodes_select]),
                      'long'  : np.average([x['long'] for x in nodes_select]),
                      'edges' : [x['edges'] for x in nodes_select] }
@@ -591,16 +606,8 @@ def process_data(input_gdf,
         # tail and head are the node IDs, NOT their number in the node list
         if tail > head:
             val = head*1
-            tail = head
-            head = tail
-
-        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
-            print(tail, head, taili, headi)
-            print(tail_coords)
-            print(head_coords)
-            print(tail_to_left)
-            print(tail_to_right)
-            print(_gdf['geometry'][i].coords[0], _gdf['geometry'][i].coords[-1])
+            head = tail*1
+            tail = val*1
 
         #
         # taili and headi are the list indexes NOT the node ID's
@@ -613,9 +620,10 @@ def process_data(input_gdf,
         tail_coords = (nodes[taili]['long'], nodes[taili]['lat'])
         head_coords = (nodes[headi]['long'], nodes[headi]['lat'])
 
-
         # now, check and see if the geometry needs to be flipped:
-
+        # compute distances of tail node to each end of the segment.
+        # this MAY not work the best if the segment is a closed loop (or
+        # of similar shape...)
         tail_to_left  = gpxpy.geo.distance(tail_coords[1],
                                            tail_coords[0],
                                            0.0,   # elevation doesn't matter here
@@ -630,26 +638,20 @@ def process_data(input_gdf,
                                            _gdf['geometry'][i].coords[-1][0],
                                            0.0)
 
-
         flip_geometry = False
         if tail_to_right < tail_to_left: # flip the geometry
             flip_geometry = True
             _gdf.at[i,'geometry'] = shapely.geometry.LineString( _gdf['geometry'][i].coords[::-1])
 
-        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
-            print("-- after flipping --")
-            print( _gdf.at[i,'geometry'].coords[0], _gdf.at[i,'geometry'].coords[-1])
-
-        new_line = _gdf['geometry'][i].append(head_coords) ##
+        # append node coords to line to make everything continuous
+        new_line = _gdf['geometry'][i].append(head_coords)
         new_line = new_line.prepend(tail_coords)
 
-        if ((tail,head) == (1431, 1214)) or ( (tail,head) == (1214,1431)):
-            print("-- after append --")
-            print( new_line.coords[0], new_line.coords[-1])
-
-        #print(coords[0], coords[1], coords[-2],coords[-1])
+        #
+        # Generate a GPX track object from this data to (easily) add in
+        # elevations.
+        #
         gpx = gpxpy.gpx.GPX()
-
         gpx_track = gpxpy.gpx.GPXTrack()
         gpx.tracks.append(gpx_track)
 
@@ -696,17 +698,10 @@ def process_data(input_gdf,
         # apparenlty geopandas uses fiona to do writing to file
         # which DOESN"T support storing lists / np arrays into individual
         # cells. The below is a workaround (and a sin).. converting to a string
-        #
-
         all_elevations[i]  = ','.join(["%5.3E"%(a) for a in elevations])
         all_grades[i]      = ','.join(["%5.3E"%(a) for a in grade])
         all_distances[i]   = ','.join(["%5.3E"%(a) for a in distances])
 
-    #_gdf.insert(5, 'elevations', all_elevations)
-
-
-
-    #_gdf['elevations'] = all_elevations
     _gdf.insert(5, 'elevations', all_elevations)
     _gdf.insert(5, 'grades', all_grades)
     _gdf.insert(5, 'distances', all_distances)
@@ -717,22 +712,52 @@ def process_data(input_gdf,
     # make sure the crs is copied over
     _gdf['geometry'].crs = _gdf.crs
 
-    # nx_graph_from_gdf(_gdf)
-    # lets try and make the graph
-
-    trail_nodes = [(n['index'], {k : n[k] for k in ['lat','long','edges','index']}) for n in nodes]
+    # From the processed data, generate the list of node tuples / dictionaries
+    # and edge tuple / dictionaries needed by networkx's Graph class to
+    # make a Graph
+    trail_nodes = [(n['index'], {k : n[k] for k in ['lat','long','edges','index','elevation']}) for n in nodes]
     trail_edges = [ (e[0],e[1], _gdf.iloc[i][columns_keep]) for i,e in enumerate(edges)]
 
     if not (outname is None):
+        # saves the geopandas dataframe and pickles the trail node
+        # and trail edge objects
         save_trail_df(outname, _gdf, trail_nodes, trail_edges)
 
-    return _gdf, trail_nodes, trail_edges # nodes, edges #, lat, long, merge_list
+    return _gdf, trail_nodes, trail_edges
 
 
 def make_trail_map(segmented_gdf, trail_nodes, trail_edges,
                    outname = None):
     """
+    Given a fully segmented geopandas dataframe (e.g. each row corresponds to
+    a SINGLE line segment) and information on the nodes and edge of the dataframe,
+    generates a TrailMap object / graph. This REQUIRES information of the nodes
+    and edges that is not currenlty easily processed from the dataframe itself.
+    It would be much more convenient to generate this information from the dataframe
+    without relying on having the pickled node and edge files OR having run
+    `process_data` on the raw datasets first. But for now. This is fine.
 
+    Parameters
+    -----------
+    segmented_df   :  (geopandas dataframe) Trail data, where each row
+                      corresponds to a single segment of trail. Currently this
+                      is just used to get the coordinate data, and `trail_nodes`
+                      and `trail_edges` are really what are used to generate the
+                      graph. In the future these two will be derived from the
+                      dataframe.
+    trail_nodes    :  list of trail nodes connecting together the segments.
+                      list is of the form : [(n,{}), (n2,{}),...] where
+                      n and n2 are node indexes / IDs and {} is the
+                      dictionary of properties for each node.
+    trail_edges    :  list of trail edges. List is of the form:
+                      [ (u,v, {}), (u2, v2, {}), ....] where u,v and u2,v2 are the
+                      node tail / heads for each segment and {} the dictionary
+                      of properties for the segment
+    outname        :  (Optional, string) file to pickle the TrailMap object to
+
+    Returns:
+    ---------
+    G              : TrailMap graph (derived class of networkx's Graph)
     """
 
     G = TrailMap()
