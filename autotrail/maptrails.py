@@ -20,6 +20,7 @@ import srtm
 import shapely
 import networkx as nx
 import autotrail
+import numpy as np
 
 
 def plot_trails(trailmap,
