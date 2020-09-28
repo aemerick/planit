@@ -19,18 +19,34 @@ import gpxpy
 import srtm
 import shapely
 import networkx as nx
+import autotrail
 
-from autotrail import TrailMap
 
-
-def plot_trails(trailmap, edges = None,
-                ll = None, rr = None):
+def plot_trails(trailmap,
+                nodes = None, edges = None,
+                ll = None, rr = None,
+                fs = 6,
+                show_profile = True):
     """
     Plot all trails in trailmap in the region selected.
     """
 
-    fig,ax = plt.subplots()
-    fig.set_size_inches(6,6)
+    if (edges is None) and (not (nodes is None)):
+        edges = trailmap.edges_from_nodes(nodes)
+
+    color = ['C%i'%(i) for i in range(9)]
+    ci = 1
+
+    if show_profile and (edges is None):
+        show_profile = False
+
+    if show_profile:
+        fig, all_ax = plt.subplots(1,2)
+        fig.set_size_inches(fs*2,fs)
+    else:
+        fig, all_ax = plt.subplots()
+        fig.set_size_inches(fs,fs)
+
 
 
     if not (edges is None):
@@ -75,6 +91,11 @@ def plot_trails(trailmap, edges = None,
         ll = (-np.inf,-np.inf)
         rr = (np.inf,np.inf)
 
+    if show_profile:
+        ax = all_ax[0]
+    else:
+        ax = all_ax
+
     for (u,v,d) in trailmap.edges(data=True):
 
         long = [c[0] for c in d['geometry'].coords]
@@ -90,10 +111,25 @@ def plot_trails(trailmap, edges = None,
             long = [c[0] for c in trailmap.edges[(u,v)]['geometry'].coords]
             lat  = [c[1] for c in trailmap.edges[(u,v)]['geometry'].coords]
 
-            ax.plot(long,lat,lw=3,ls='-',color='C1')
-
+            ax.plot(long,lat,lw=3,ls='-',color=color[ci])
 
     ax.set_xlim(ll[0],rr[0])
     ax.set_ylim(ll[1],rr[1])
 
-    return fig, ax
+    if show_profile:
+        ax = all_ax[1]
+        dists = trailmap.reduce_edge_data('distances',edges=edges,function=None) * 0.000621371
+        alts  = trailmap.reduce_edge_data('elevations',edges=edges,function=None) * 3.28084
+
+        try:
+            ax.plot( np.cumsum(dists), alts, color = color[ci], lw = 3, ls ='-')
+        except:
+            print("WARNING: Issue in dist and alt lengths. Forcing plot. %f %f"%(np.size(dists),np.size(alts)))
+            min_length = np.min([np.size(dists),np.size(alts)])
+            ax.plot(np.cumsum(dists[:min_length]), alts[:min_length], color = color[ci], lw = 3, ls = '-')
+            ax.set_xlabel('Distance (mi)')
+            ax.set_ylabel('Elevation (ft)')
+
+    plt.tight_layout()
+
+    return fig, all_ax
