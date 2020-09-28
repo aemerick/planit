@@ -792,16 +792,17 @@ class TrailMap(nx.Graph):
                     next_node  = end_node
                     next_path  = shortest_path_home
                     next_edges = shortest_edges_home
-                else:
+                elif (next_node < 0):
                     # likely running out of room
-                    # pick one of the nodes along the shortest path home
+                    # pick one of the nodes along the shortest weighted path home
                     inext      = np.random.randint(0, len(shortest_path_home))
                     next_node  = shortest_path_home[inext]
                     next_path  = shortest_path_home[:inext+1] # AJE: bug here?
                     next_edges = self.edges_from_nodes(next_path)
                     self._dprint("Picking route on way to home %i %i"%(inext,next_node),next_path)
-
-
+                else:
+                    next_path  = nx.shortest_path(subG, current_node, next_node, weight='weight')
+                    next_edges = self.edges_from_nodes(next_path)
 
             else:
                 next_path  = nx.shortest_path(subG, current_node, next_node, weight='weight')
