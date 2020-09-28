@@ -23,11 +23,20 @@ import autotrail
 import numpy as np
 
 
+from matplotlib import rc, cm
+viridis = cm.get_cmap('viridis')
+magma   = cm.get_cmap('magma')
+plasma  = cm.get_cmap('plasma')
+from matplotlib.collections import LineCollection
+from matplotlib.colors import ListedColormap, BoundaryNorm
+
+
+
 def plot_trails(trailmap,
                 nodes = None, edges = None,
                 ll = None, rr = None,
-                fs = 6,
-                show_profile = True):
+                fs = 6, linecolor='gradient',
+                show_profile = True, colormap = magma):
     """
     Plot all trails in trailmap in the region selected.
     """
@@ -108,11 +117,33 @@ def plot_trails(trailmap,
         ax.plot(long, lat, lw = 1, ls = '--', color = 'black')
 
     if not (edges is None):
+
+        if linecolor == 'gradient':
+            lencount = 0
+            maxlen   = np.size(trailmap.reduce_edge_data('distances',edges=edges,function=None))
+
         for (u,v) in edges:
             long = [c[0] for c in trailmap.edges[(u,v)]['geometry'].coords]
             lat  = [c[1] for c in trailmap.edges[(u,v)]['geometry'].coords]
 
-            ax.plot(long,lat,lw=3,ls='-',color=color[ci])
+            if u > v:
+                long = long[::-1]
+                lat = lat[::-1]
+
+            if linecolor == 'gradient':
+                points = np.array([long, lat]).T.reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+                norm = plt.Normalize(0.0,maxlen)
+                lc = LineCollection(segments, cmap='magma', norm=norm)
+                # Set the values used for colormapping
+                lc.set_array(np.arange(len(long)-1)+lencount)
+                lc.set_linewidth(4)
+                line = ax.add_collection(lc)
+                lencount=lencount+len(long)-1
+                #fig.colorbar(line, ax=axs[0])
+                #ax.plot(long,lat,lw=3,ls='-',color=colormap( np.arange(long) / 1.0*np.size(long)) )
+            else:
+                ax.plot(long,lat,lw=3,ls='-',color=color[ci])
 
     ax.set_xlim(ll[0],rr[0])
     ax.set_ylim(ll[1],rr[1])
@@ -122,14 +153,20 @@ def plot_trails(trailmap,
         dists = trailmap.reduce_edge_data('distances',edges=edges,function=None) * 0.000621371
         alts  = trailmap.reduce_edge_data('elevations',edges=edges,function=None) * 3.28084
 
-        try:
-            ax.plot( np.cumsum(dists), alts, color = color[ci], lw = 3, ls ='-')
-        except:
-            print("WARNING: Issue in dist and alt lengths. Forcing plot. %f %f"%(np.size(dists),np.size(alts)))
-            min_length = np.min([np.size(dists),np.size(alts)])
-            ax.plot(np.cumsum(dists[:min_length]), alts[:min_length], color = color[ci], lw = 3, ls = '-')
-            ax.set_xlabel('Distance (mi)')
-            ax.set_ylabel('Elevation (ft)')
+        if linecolor == 'gradient' and False:
+            points = np.array([np.cumsum(dists),alts]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            norm = plt.Normalize(0.0,len(dists))
+            lc = LineCollection(segments, cmap='magma', norm=norm)
+            # Set the values used for colormapping
+            lc.set_array(np.arange(len(dists))-1)
+            lc.set_linewidth(4)
+            line = ax.add_collection(lc)
+        else:
+            ax.plot(np.cumsum(dists), alts, color = color[ci], lw = 3, ls = '-')
+
+        ax.set_xlabel('Distance (mi)')
+        ax.set_ylabel('Elevation (ft)')
 
     plt.tight_layout()
 
