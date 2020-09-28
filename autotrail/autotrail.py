@@ -628,7 +628,7 @@ class TrailMap(nx.Graph):
 
         # if route IS feasible, see if we fit within the constraints
 
-        route_properties = self.route_properties(nodes, verbose=False)
+        route_properties = self.route_properties(route, verbose=False)
 
         for k in target_values.keys():
             val = target_method[k](route_properties[k])
@@ -708,7 +708,7 @@ class TrailMap(nx.Graph):
         # do some initial error checking to make sure that things CAN work
         #
         if start_node != end_node:
-            if not (self.is_route_feasible(start_node, end_node, target_values, target_methods)):
+            if not (self.is_route_feasible(start_node, end_node, target_values, totals_methods)):
                 self._print("Route not feasible. Please try different input")
                 return None, None
 
@@ -778,7 +778,7 @@ class TrailMap(nx.Graph):
                 # distance
                 shortest_path_home     = nx.shortest_path(subG, current_node, end_node, weight='weight')
                 shortest_edges_home    = self.edges_from_nodes(shortest_path_home)
-                shortest_primary_home = self.reduce_edge_data(primary_weight,edges=shortest_edges_home)
+                shortest_primary_home  = self.reduce_edge_data(primary_weight,edges=shortest_edges_home)
 
                 #
                 # would potentialy be v cool to iterate here and check once with weight
