@@ -19,8 +19,9 @@ import gpxpy
 import srtm
 import shapely
 import networkx as nx
-import autotrail
 import numpy as np
+
+from planit.autotrail import trailmap
 
 
 from matplotlib import rc, cm
@@ -32,7 +33,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 
 
-def plot_trails(trailmap,
+def plot_trails(tmap,
                 nodes = None, edges = None,
                 ll = None, rr = None,
                 fs = 6, linecolor='gradient',
@@ -42,7 +43,7 @@ def plot_trails(trailmap,
     """
 
     if (edges is None) and (not (nodes is None)):
-        edges = trailmap.edges_from_nodes(nodes)
+        edges = tmap.edges_from_nodes(nodes)
 
     color = ['C%i'%(i) for i in range(9)]
     ci = 1
@@ -66,8 +67,8 @@ def plot_trails(trailmap,
             min_lat, max_lat = 9999, -10000
 
             for (u,v) in edges:
-                long = [c[0] for c in trailmap.edges[(u,v)]['geometry'].coords]
-                lat  = [c[1] for c in trailmap.edges[(u,v)]['geometry'].coords]
+                long = [c[0] for c in tmap.edges[(u,v)]['geometry'].coords]
+                lat  = [c[1] for c in tmap.edges[(u,v)]['geometry'].coords]
 
                 min_long = np.min([min_long,np.min(long)])
                 max_long = np.max([max_long,np.max(long)])
@@ -106,13 +107,18 @@ def plot_trails(trailmap,
     else:
         ax = all_ax
 
-    for (u,v,d) in trailmap.edges(data=True):
+    for (u,v,d) in tmap.edges(data=True):
 
         long = [c[0] for c in d['geometry'].coords]
         lat  = [c[1] for c in d['geometry'].coords]
 
-        if all(long<ll[0]) or all(long>rr[0]) or all(lat<ll[1]) or all(lat>rr[1]):
-            continue
+        try:
+            if all(long<ll[0]) or all(long>rr[0]) or all(lat<ll[1]) or all(lat>rr[1]):
+                continue
+        except:
+            print(long)
+            print(lat)
+            print(ll, rr)
 
         ax.plot(long, lat, lw = 1, ls = '--', color = 'black')
 
@@ -120,11 +126,11 @@ def plot_trails(trailmap,
 
         if linecolor == 'gradient':
             lencount = 0
-            maxlen   = np.size(trailmap.reduce_edge_data('distances',edges=edges,function=None))
+            maxlen   = np.size(tmap.reduce_edge_data('distances',edges=edges,function=None))
 
         for (u,v) in edges:
-            long = [c[0] for c in trailmap.edges[(u,v)]['geometry'].coords]
-            lat  = [c[1] for c in trailmap.edges[(u,v)]['geometry'].coords]
+            long = [c[0] for c in tmap.edges[(u,v)]['geometry'].coords]
+            lat  = [c[1] for c in tmap.edges[(u,v)]['geometry'].coords]
 
             if u > v:
                 long = long[::-1]
@@ -150,8 +156,8 @@ def plot_trails(trailmap,
 
     if show_profile:
         ax = all_ax[1]
-        dists = trailmap.reduce_edge_data('distances',edges=edges,function=None) * 0.000621371
-        alts  = trailmap.reduce_edge_data('elevations',edges=edges,function=None) * 3.28084
+        dists = tmap.reduce_edge_data('distances',edges=edges,function=None) * 0.000621371
+        alts  = tmap.reduce_edge_data('elevations',edges=edges,function=None) * 3.28084
 
         if linecolor == 'gradient' and False:
             points = np.array([np.cumsum(dists),alts]).T.reshape(-1, 1, 2)

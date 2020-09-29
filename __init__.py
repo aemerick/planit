@@ -1,1 +1,1 @@
-from .autotrail.autotrail import TrailMap
+#from .autotrail.trailmap import TrailMap

@@ -19,7 +19,8 @@ import shapely
 import gpxpy
 
 # FIX THIS
-import autotrail.autotrail.process_gpx_data as gpx_process
+from planit.autotrail import process_gpx_data as gpx_process
+#import autotrail.autotrail.process_gpx_data as gpx_process
 
 random.seed(12345)
 

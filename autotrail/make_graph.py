@@ -1,6 +1,9 @@
 import geopandas as geopd
-import process_gpx_data as gpx_process
 import os, sys
+
+
+from planit.autotrail import process_gpx_data as gpx_process
+
 
 def generate_segmented_dataset(inname ='./data/Boulder_Area_Trails.geojson',
                                outname = './data/boulder_area_trail_processed'):

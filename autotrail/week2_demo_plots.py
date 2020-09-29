@@ -12,8 +12,7 @@ plasma  = cm.get_cmap('plasma')
 
 from pyproj import Proj, transform
 
-import autotrail as AT
-import process_gpx_data as gpx_process
+from planit.autotrail import process_gpx_data as gpx_process
 
 m_in_mi = 1609.34
 m_in_ft = 0.3048

@@ -762,7 +762,7 @@ def make_trail_map(segmented_gdf, trail_nodes, trail_edges,
     ---------
     G              : TrailMap graph (derived class of networkx's Graph)
     """
-    from autotrail.autotrail.autotrail import TrailMap
+    from planit.autotrail.trailmap import TrailMap
 
     G = TrailMap()
     G.graph['crs'] = segmented_gdf.crs # coordinate system
