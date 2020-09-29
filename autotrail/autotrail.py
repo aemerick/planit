@@ -17,7 +17,9 @@ import networkx as nx
 import random
 import shapely
 import gpxpy
-import process_gpx_data as gpx_process
+
+# FIX THIS
+import autotrail.autotrail.process_gpx_data as gpx_process
 
 random.seed(12345)
 
@@ -176,12 +178,12 @@ class TrailMap(nx.Graph):
         #   > 0 gives relative importance
         #
         self._weight_factors = {}
-        self._default_weight_factors = {'distance' : 1,
-                                        'elevation_gain' : 0,
-                                        'elevation_loss' : 0,      # off
-                                        'min_grade' : 0,           # off
-                                        'max_grade' : 0,           # off
-                                        'traversed_count' : 10,    # very on
+        self._default_weight_factors = {'distance'         : 1,
+                                        'elevation_gain'   : 1,
+                                        'elevation_loss'   : 1,      # off
+                                        'min_grade'        : 0,           # off
+                                        'max_grade'        : 0,           # off
+                                        'traversed_count'  : 100,    # very on
                                         'in_another_route' : 5}    # medium on
 
         self._assign_default_weights()
@@ -255,6 +257,9 @@ class TrailMap(nx.Graph):
             if not (k in target_values.keys()):
                 self._weight_factors[k] = 0.0
 
+        # AJE:
+        #    maybe set loop here to set values to negative or positive weights
+
         # for now... need to fix this...
         for k in ['traversed_count','in_another_route']:
             self._weight_factors[k] = self._default_weight_factors[k]
@@ -311,7 +316,7 @@ class TrailMap(nx.Graph):
 
         return
 
-    def write_gpx_file(self, outname, nodes = None, edges = None):
+    def write_gpx_file(self, outname, nodes = None, edges = None, elevation=True):
         """
         Convert route (defined by connected nodes or edges) to a
         GPX .xml file containing lat and long coordinates with
@@ -343,7 +348,10 @@ class TrailMap(nx.Graph):
         # Linestings are being saved with (long,lat) coordinates but GPX
         # needs (lat,long). Careful!
         #
-        gpx_segment.points.extend( [gpxpy.gpx.GPXTrackPoint(x[1],x[0], elevation=x[2]) for x in route_line.coords])
+        if elevation:
+            gpx_segment.points.extend( [gpxpy.gpx.GPXTrackPoint(x[1],x[0], elevation=x[2]) for x in route_line.coords])
+        else:
+            gpx_segment.points.extend( [gpxpy.gpx.GPXTrackPoint(x[1],x[0]) for x in route_line.coords])
 
 
         with open(outname, 'w') as f:
@@ -616,13 +624,13 @@ class TrailMap(nx.Graph):
             if len(self.nodes[start_node]['edges']) > 0:
                 return True
             else:
-                self._myprint("You seem to have picked a start point that does not connect to anything")
+                self._print("You seem to have picked a start point that does not connect to anything")
                 return False
 
         try:
             route = nx.shortest_path(self, start_node, end_node)
         except nx.NetworkXNoPath:
-            self._myprint("Start and end points do not connect on a known trail: ", start_node, end_node)
+            self._print("Start and end points do not connect on a known trail: ", start_node, end_node)
             return False
 
 
@@ -633,12 +641,12 @@ class TrailMap(nx.Graph):
         for k in target_values.keys():
             val = target_method[k](route_properties[k])
             if val > target_values[k]:
-                self._myprint("WARNING: Route may not be feasible within constraint on ", k)
-                self._myprint("Desired " + k + " is %f, while shortest path yields %f"%(target_values[k],val))
+                self._print("WARNING: Route may not be feasible within constraint on ", k)
+                self._print("Desired " + k + " is %f, while shortest path yields %f"%(target_values[k],val))
 
                 if k == 'distance':
                     # actually fail on this
-                    self._myprint("Route not possible within desired distance. Please try again with different parameters")
+                    self._print("Route not possible within desired distance. Please try again with different parameters")
                     return False
 
         return True
@@ -649,6 +657,7 @@ class TrailMap(nx.Graph):
                          end_node=None,
                          primary_weight = 'distance',
                          reinitialize=True,
+                         reset_used_counter = False,
                          epsilon=0.25):
         """
         The core piece of autotrails
@@ -744,11 +753,17 @@ class TrailMap(nx.Graph):
                                # multiple routes in this funciton later and serve
                                # up different options
 
-        if reinitialize:
-            # reset some things
-            # WARNING: LOOPING OVER ADJ LOOPS OVER ALL EDGES TWICE
+        if reinitialize and reset_used_counter:
+
             for e in self.edges(data=True):
                 e[2]['traversed_count'] = 0
+                e[2]['in_another_route'] = 0
+
+        elif reinitialize:
+            # reset some things
+            for e in self.edges(data=True):
+                e[2]['traversed_count'] = 0
+
 
             self.recompute_edge_weights()
 
@@ -838,6 +853,9 @@ class TrailMap(nx.Graph):
                 keep_looping = False
 
 
+        if len(possible_routes[iroute]) <= 1:
+            self._print("NO POSSIBLE ROUTE FOUND. Route stays fixed at start node.")
+
 
         return totals[iroute], possible_routes[iroute]
 
@@ -899,7 +917,7 @@ class TrailMap(nx.Graph):
 
     def get_intermediate_node(self, current_node, target_distance,
                                     epsilon=0.25, shift = 0.1, weight='distance',
-                                    G=None):
+                                    G=None, recursive = True):
 
         """
         Search for a node to jump to next in the algorithm given knowledge of
@@ -929,11 +947,13 @@ class TrailMap(nx.Graph):
             G = self
 
         next_node = None
+
+        failed = False
         while next_node is None:
 
             # This should ensure that point is actually reachable
-            #print(G)
-            #print(current_node, weight, epsilon, shift, target_distance)
+            # print(G)
+            # print(current_node, weight, epsilon, shift, target_distance)
             all_possible_points = nx.single_source_dijkstra(G, current_node,
                                                             weight=weight,
                                                             cutoff=(epsilon+shift)*target_distance)
@@ -942,7 +962,8 @@ class TrailMap(nx.Graph):
             if len(all_possible_points[0]) == 1:
                 if epsilon > 1.0:
                     self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
-                    return -1
+                    failed = True
+                    next_node = -1
                     #raise RuntimeError
 
                 #self._dprint("Increasing epsilon in loop %f"%(epsilon))
@@ -951,9 +972,28 @@ class TrailMap(nx.Graph):
 
             farthest_node = np.max(all_possible_points[0].values())
             possible_points = [k for (k,v) in all_possible_points[0].items() if v >= (epsilon-shift)*target_distance]
+######### AJE test below
+            if len(possible_points) == 0:
+                if epsilon > 1.0:
+                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    failed = True
+                    next_node = -1
+                    #raise RuntimeError
 
+                #self._dprint("Increasing epsilon in loop %f"%(epsilon))
+                epsilon = epsilon + shift
+                continue
+######### AJE - trset above
             # select one at random!!!
             next_node = random.choice(possible_points)
+
+        if failed and recursive:
+            next_node = self.get_intermediate_node(current_node,target_distance,epsilon = 0.1,
+                                                   shift = 0.1, weight=weight, G = G, recursive=False)
+
+            if next_node < 0:
+                return -1
+
 
         return next_node
 
