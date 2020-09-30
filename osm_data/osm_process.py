@@ -21,9 +21,9 @@ import gpxpy
 import shapely
 
 from planit.autotrail.trailmap import TrailMap
-
 import planit.autotrail.process_gpx_data as gpx_process
 
+from planit.osm_data import osm_fetch
 
 
 def process_ox(osx_graph, hiking_only = True):
@@ -231,8 +231,15 @@ def compute_osm_edge_properties(edges, nodes):
         d['min_grade']        = np.min(grade)
         d['max_grade']        = np.max(grade)
         d['average_grade']    = np.average(grade, weights = distances) # weighted avg!!
-        d['average_max_grade']    = np.average(grade[grade>0], weights = distances[grade>0]) # weighted avg!!
-        d['average_min_grade']    = np.average(grade[grade<0], weights = distances[grade<0]) # w        
+        if np.sum(distances[grade>0]) > 0:
+            d['average_max_grade']    = np.average(grade[grade>0], weights = distances[grade>0]) # weighted avg!!
+        else:
+            d['average_max_grade'] = 0.0
+        if np.sum(distances[grade<0]) > 0:
+            d['average_min_grade']    = np.average(grade[grade<0], weights = distances[grade<0]) # w
+        else:
+            d['average_min_grade'] = 0.0
+            
         d['min_altitude']     = np.min(elevations)
         d['max_altitude']     = np.max(elevations)
         d['average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
@@ -249,3 +256,39 @@ def compute_osm_edge_properties(edges, nodes):
         d['distances']   = ','.join(["%6.2E"%(a) for a in distances])
 
     return edges
+
+
+def osmnx_trailmap(center_point = None,
+              ll = None,
+              rr = None,
+              query=None,
+              dist=100000.0, # 100 km !
+              save_to_file=True,
+              allow_cache_load=True):
+    """
+    Wrapper around all of the get functions. kwargs match those in
+    osm_fetch
+    """
+
+    ox_graph = osm_fetch.get_graph(center_point=center_point,ll=ll,rr=rr,
+                                   query=query,dist=dist,save_to_file=save_to_file,
+                                   allow_cache_load=allow_cache_load)
+    tmap     = process_ox(ox_graph)
+
+    return tmap
+
+
+def test():
+    """
+    Test
+    """
+
+    center_point = ( 34.2070, -118.13684)
+    tmap = osmnx_trailmap(center_point=center_point, dist=1.0E4)
+
+
+    print("Success: ",type(tmap))
+    return
+
+if __name__ == '__main__':
+    test()
