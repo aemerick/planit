@@ -8,6 +8,12 @@
 
     Auto-generated hiking and trail running routes in Boulder, CO
     based on known trail data and given user-specified contraints.
+
+
+    TODO: 1) move this to do list somewhere else
+          2) remove routes that are identical from the results.
+          3) penalize grades by gradient (ha)
+          4)
 """
 
 import numpy as np
@@ -191,11 +197,16 @@ class TrailMap(nx.Graph):
                                         'traversed_count'  : 100,    # very on
                                         'in_another_route' : 5}    # medium on
 
+        # dictionaries to hold min-max scalings for weights
+        # and functions to apply scalings
+        self._scalings = None
+        self._scale_var = None
+
         self._assign_default_weights()
 
         return
 
-    def scale_edge_attributes(self):
+    def scale_edge_attributes(self, reset=False):
         """
         Scale edge attributes to do weighting properly. This does simple
         min-max scaling.
@@ -208,17 +219,30 @@ class TrailMap(nx.Graph):
         is done now at least)
         """
 
-        for k in self.edge_attributes: # need error checking for non quantiative values
+        if (self._scalings is None):
+            self._scalings = {}
 
-            min_val = self.reduce_edge_data(k, function=np.min)
-            max_val = self.reduce_edge_data(k, function=np.max)
-            max_min = max_val - min_val
+        if (self._scale_var is None):
+            self._scale_var = {}
 
-            if (max_min) == 0.0: # likely no data here - don't rescale
+        # compute!
+        for k in self.edge_attributes:
+            if (not (k in self._scalings.keys())) or reset:
+                self._scalings[k] = {}
+                self._scalings[k]['min_val'] = min_val = self.reduce_edge_data(k,function=np.min)
+                self._scalings[k]['max_val'] = self.reduce_edge_data(k,function=np.max)
+                self._scalings[k]['max_min'] = self._scalings[k]['max_val'] - self._scalings[k]['min_val']
+
+            if (not (k in self._scale_var.keys())) or reset:
+                self._scale_var[k] = lambda key, var : (var - self._scalings[key]['min_val']) / self._scalings[key]['max_min']
+
+        for k in self.edge_attributes: # need error checking for non quantiative values - also JUST DO THIS ONCE (AJE)
+
+            if (self._scalings[k]['max_min']) == 0.0: # likely no data here - don't rescale
                 continue
 
             for e in self.edges(data=True):
-                e[2][k+'_scaled'] = (e[2][k]-min_val)/max_min
+                e[2][k+'_scaled'] = self._scale_var[k](k,e[2][k])
 
         return
 
@@ -271,13 +295,17 @@ class TrailMap(nx.Graph):
 
         return
 
-    def recompute_edge_weights(self, edges = None, features = None):
+    def recompute_edge_weights(self, edges = None, features = None,
+                                     target_values = {}):
         """
         Recompute edge weights based off of whether or not we
         consider various things.
 
         TODO: Test if making these NEGATIVE works (could be useful)
         """
+
+        # AJE: Maybe weight grade by distance of segment to target? that way 
+        #      we can allow steep bits if needed
 
         # need a list of what we are considering
         # and how to treat it. Hard code for now
@@ -289,13 +317,29 @@ class TrailMap(nx.Graph):
         if features is None:
             features = ['distance', 'elevation_gain', 'elevation_loss']
 
+
+        def _compute_grade_weight(key, edict):
+            """
+            Helper function for doing grade scalings.
+            Currently computing distance in scaled variables. But maybe better to compute
+            scaling by relative 'error' (desired - edgeval) / desired ??
+
+            weight function here is 1 - 0.5*(desired - val)^2, flattening to 0 when negative.
+            gaurunteed to be 0 - 1
+
+            """
+
+#            val = 1 - (self._scale_var[key](key,target_values.get(key,edict[key])) - edict[key+'_scaled'])))**2
+            val = 1 - (target_values.get(key,edict[key]) - edict[key])**2
+            val = np.max([val,0.0])
+            return self._weight_factors[key] * val
+
         for u,v,d in edges:
 
             max_tail_distance = np.max([self._adj[u][v]['distance_scaled'] for v in self._adj[u]])
 
             # apply weights for all '_scaled' properties using simple sum for now
             # need to control this better later. Handle traversed coutn separately
-
 
             d['weight'] = self._weight_factors['distance'] * d['distance_scaled']
 
@@ -304,9 +348,14 @@ class TrailMap(nx.Graph):
             if u < v:
                 d['weight'] += self._weight_factors['elevation_gain'] * d['elevation_gain_scaled']
                 d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_loss_scaled']
+                d['weight'] += _compute_grade_weight('average_max_grade',d)
+                d['weight'] += _compute_grade_weight('average_min_grade',d)
+
             else:
                 d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_gain_scaled']
                 d['weight'] += self._weight_factors['elevation_gain'] * d['elevation_loss_scaled']
+                d['weight'] += _compute_grade_weight('average_max_grade',d) * (self._weight_factors['average_min_grade']/self._weight_factors['average_max_grade'])
+                d['weight'] += _compute_grade_weight('average_min_grade',d) * (self._weight_factors['average_max_grade']/self._weight_factors['average_min_grade'])
 
             #
             # Backtrack penalty
@@ -408,7 +457,7 @@ class TrailMap(nx.Graph):
 
         if nodes is None:
             nodes = self.nodes(data=True)
-        elif not type(nodes[0], tuple):
+        elif not isinstance(nodes[0], tuple):
             nodes = [(n,self.nodes[n]) for n in nodes]
 
         if (key == 'index') and not (key in list(nodes)[0][1].keys()):
@@ -795,7 +844,7 @@ class TrailMap(nx.Graph):
                 e[2]['traversed_count'] = 0
 
 
-            self.recompute_edge_weights()
+            self.recompute_edge_weights(target_values=target_values)
 
 
         remaining = {k:0 for k in totals_methods.keys()} # dict to get remainders to target
@@ -868,7 +917,7 @@ class TrailMap(nx.Graph):
                 totals[iroute][k] = totals_methods[k]( [totals[iroute][k], newval])
 
             # recompute weights:
-            self.recompute_edge_weights() # probably need kwargs
+            self.recompute_edge_weights(target_values=target_values) # probably need kwargs
 
             # use edges_to_hide = nx.classes.filters.hide_edges(edges)
             # to filter out based on min / max grade
