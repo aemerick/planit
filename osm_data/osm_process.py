@@ -28,7 +28,26 @@ import planit.autotrail.process_gpx_data as gpx_process
 
 def process_ox(osx_graph, hiking_only = True):
     """
-    Gather list of edges and nodes
+    Process the osx_graph object generated from doing something like:
+
+       >  osx_graph = osmnx.graph_from_bbox()
+
+    To filter out all non-hiking edges (and nodes), leaving only the hikeable
+    trails and paths, defines hiking trails as those with 'highway' feature of
+    'path','footway', or 'pedestrian'. Everything else is treated as road for
+    now and is ignored.
+
+    Returns the fully-processed graph as as TrailMap object, which includes
+    elevation data for each edge and node.
+
+    Parameters:
+    ------------
+    osx_graph    :   an osmnx graph object
+    hiking_only  : (optional, bool) Does nothing for now. Default : True
+
+    Returns:
+    -------------
+    tmap     : A fully processed and ready-to-run TrailMap object.
     """
 
     edges = []
@@ -43,12 +62,12 @@ def process_ox(osx_graph, hiking_only = True):
               'tertiary_link','primary_link','living_street','secondary_link']:
         highway_types[k] = 'road'
 
-    for k in ['path','unclassified','footway','pedestrian']:
+    for k in ['path','footway','pedestrian']:
         highway_types[k] = k
 
     if hiking_only:
+        # because why do a really long list comprehension
         edges = [(u,v,d) for (u,v,d) in osx_graph.edges(data=True) if all(f in d.keys() for f in mandatory_features) and any(f in d['highway'] for f in ['path','footway','track'])]
-
     else:
         edges = [(u,v,d) for (u,v,d) in osx_graph.edges(data=True) if all(f in d.keys() for f in mandatory_features)]
 
@@ -63,20 +82,22 @@ def process_ox(osx_graph, hiking_only = True):
                     d[highway_types[k]] = 0
 
     #
-    # now I need to add in all edge attributes
+    # Get all unique nodes and make the node tuple array
     #
-
     nodes = np.unique(np.concatenate([(u,v) for (u,v,d) in edges]).ravel())
     nodes = [(n, osx_graph._node[n]) for n in nodes]
 
+    # set node properties
     for n,d in nodes:
-        d['lat'] = d['y']
-        d['long'] = d['x']
+        d['lat']  = d['y'] # for compatability with TrailMap
+        d['long'] = d['x'] # for compatability with TrailMap
         d['elevation'] = gpx_process._elevation_data.get_elevation(d['lat'],d['long'])
-        d['index'] = d['osmid']
+        d['index'] = d['osmid']   # for compatability with TrailMap
 
+    # where most of the work goes, setting edge properties:
     edges = compute_osm_edge_properties(edges, nodes)
 
+    # make the map!
     tmap = TrailMap()
     tmap.graph['crs'] = osx_graph.graph['crs']
     tmap.add_edges_from(edges)
@@ -88,7 +109,27 @@ def process_ox(osx_graph, hiking_only = True):
 
 def compute_osm_edge_properties(edges, nodes):
     """
+    Given a list of edges and nodes from an OSM graph dataset, compute the
+    necessary edge and node properties needed for the TrailMap object to
+    do the routing.
 
+    The most useful part of this function is to compute elevation data
+    along the edges and to define an orientation to the `geometry` feature
+    (coordinate tracks) such that travelling from tail to head (where tail is
+    the node with a lower index / osmid) gives you positive elevation_gain and
+    negative loss, and head to tail reverses these two. Ensures `geometry`
+    tracks are oriented in this fashion.
+
+    Distances computed account for elevation.
+
+    Parameters:
+    ------------
+    edges   :  list of edge tuples [(u,v,{}),....] for the graph
+    nodes   :  list of nodes tuples [(u,{}),....] for the graph
+
+    Returns:
+    ------------
+    edges   : the edited edge list with new dictionary items.
     """
 
     for i in range(len(edges)):
