@@ -231,15 +231,32 @@ def compute_osm_edge_properties(edges, nodes):
         d['min_grade']        = np.min(grade)
         d['max_grade']        = np.max(grade)
         d['average_grade']    = np.average(grade, weights = distances) # weighted avg!!
+
+        #
+        # Average min and max grade give a BETTER estimate of the conceptual 'how steep is this trail'
+        # with average min meaning the typical steepest downhill (not the steepest possible downhill)
+        # and average max meaning the typical steepest uphill. Reason why its not absolute min/max of
+        # each is becase there could be short sections (e.g. a switchback corner) that is VERY steep.
+        # Want to generally be ok with super short steep sections and constrain more on the 'typical'
+        # grade of the route. If there are no descents, min grade is the average grade of everything
+        # less than the average (I know......) and max is average of everything above max
+        #
+        # This can give a better idea of "runnable"
+        #
         if np.sum(distances[grade>0]) > 0:
             d['average_max_grade']    = np.average(grade[grade>0], weights = distances[grade>0]) # weighted avg!!
+        elif np.sum(distances[grade>d['average_grade']]) > 0:
+            d['average_max_grade']    = np.average(grade[grade>d['average_grade']], weights=distances[grade>d['average_grade']])
         else:
-            d['average_max_grade'] = 0.0
+            d['average_max_grade'] = d['average_grade']
+
         if np.sum(distances[grade<0]) > 0:
             d['average_min_grade']    = np.average(grade[grade<0], weights = distances[grade<0]) # w
+        elif np.sum(distances[grade<d['average_grade']]) > 0:
+            d['average_min_grade']    = np.average(grade[grade<d['average_grade']],weights=distances[grade<d['average_grade']])
         else:
-            d['average_min_grade'] = 0.0
-            
+            d['average_min_grade'] = d['average_grade']
+
         d['min_altitude']     = np.min(elevations)
         d['max_altitude']     = np.max(elevations)
         d['average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
