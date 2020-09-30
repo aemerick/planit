@@ -18,6 +18,8 @@ import random
 import shapely
 import gpxpy
 
+import json
+
 # FIX THIS
 from planit.autotrail import process_gpx_data as gpx_process
 #import autotrail.autotrail.process_gpx_data as gpx_process
@@ -170,6 +172,7 @@ class TrailMap(nx.Graph):
                                 'min_grade','max_grade','average_grade',
                                 'min_altitude','max_altitude','average_altitude',
                                 'traversed_count', 'in_another_route']
+        self.ensure_edge_attributes()
 
         #
         # default factors set to zero to turn off
@@ -317,13 +320,12 @@ class TrailMap(nx.Graph):
 
         return
 
-    def write_gpx_file(self, outname, nodes = None, edges = None, elevation=True):
+    def get_route_coords(self, nodes = None, edges = None, elevation=True,
+                         coords_only = False, in_json=False):
         """
-        Convert route (defined by connected nodes or edges) to a
-        GPX .xml file containing lat and long coordinates with
-        elevation.
+        Produce a list of coordinate for the route. Wrapper around get properties
+        mostly.
         """
-
         if (nodes is None) and (edges is None):
             self._print("Must provide either nodes or edges")
             raise RuntimeError
@@ -333,6 +335,25 @@ class TrailMap(nx.Graph):
 
         route_line = self.reduce_edge_data('geometry', edges=edges, function = gpx_process.combine_gpx)
 
+        if coords_only:
+            route_line = [(c[1],c[0],c[2]) for c in route_line.coords]
+
+        if in_json:
+            if elevation:
+                return json.dumps(route_line)
+            else:
+                return json.dumps([(c[1],c[0]) for c in route_line])
+        else:
+            return route_line
+
+    def write_gpx_file(self, outname, nodes = None, edges = None, elevation=True):
+        """
+        Convert route (defined by connected nodes or edges) to a
+        GPX .xml file containing lat and long coordinates with
+        elevation.
+        """
+
+        route_line = self.get_route_coords(nodes=nodes,edges=edges, elevation=elevation)
         #
         # Take points from route_line (LineString object) and place into a
         # gpx track object
@@ -387,7 +408,7 @@ class TrailMap(nx.Graph):
         if nodes is None:
             nodes = self.nodes(data=True)
 
-        if (key == 'index') and not (key in nodes[0].keys()):
+        if (key == 'index') and not (key in list(nodes)[0][1].keys()):
             values_array = np.array([n for n,d in nodes])
         else:
             values_array = np.array([d[key] for n,d in nodes])
