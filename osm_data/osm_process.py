@@ -204,7 +204,7 @@ def compute_osm_edge_properties(edges, nodes):
         gpx_segment.points.extend(gpx_points)
 
         # add in elevation data
-        gpx = add_elevations(gpx, smooth=True)
+        gpx = gpx_process.add_elevations(gpx, smooth=True)
         gpx_segment = gpx.tracks[0].segments[0]
 
         # point-point distances and elevations
@@ -216,7 +216,7 @@ def compute_osm_edge_properties(edges, nodes):
         #       elevation_loss when travelling from head to tail!!
         #
 
-        distances   = gpx_distances(gpx_segment.points)
+        distances   = gpx_process.gpx_distances(gpx_segment.points)
         elevations  = np.array([x.elevation for x in gpx_segment.points])
         dz          = (elevations[1:] - elevations[:-1])  # change in elevations
         grade       = dz / distances * 100.0            # percent grade!
@@ -229,8 +229,10 @@ def compute_osm_edge_properties(edges, nodes):
         d['elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
         d['elevation_change'] = d['elevation_gain'] + d['elevation_loss']
         d['min_grade']        = np.min(grade)
-        d['max_grad']         = np.max(grade)
+        d['max_grade']        = np.max(grade)
         d['average_grade']    = np.average(grade, weights = distances) # weighted avg!!
+        d['average_max_grade']    = np.average(grade[grade>0], weights = distances[grade>0]) # weighted avg!!
+        d['average_min_grade']    = np.average(grade[grade<0], weights = distances[grade<0]) # w        
         d['min_altitude']     = np.min(elevations)
         d['max_altitude']     = np.max(elevations)
         d['average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
