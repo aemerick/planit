@@ -37,6 +37,7 @@ def plot_trails(tmap,
                 nodes = None, edges = None,
                 ll = None, rr = None,
                 fs = 6, linecolor='gradient',
+                aspect=False,
                 show_profile = True, colormap = magma):
     """
     Plot all trails in trailmap in the region selected.
@@ -109,8 +110,8 @@ def plot_trails(tmap,
 
     for (u,v,d) in tmap.edges(data=True):
 
-        long = [c[0] for c in d['geometry'].coords]
-        lat  = [c[1] for c in d['geometry'].coords]
+        long = np.array([c[0] for c in d['geometry'].coords])
+        lat  = np.array([c[1] for c in d['geometry'].coords])
 
         try:
             if all(long<ll[0]) or all(long>rr[0]) or all(lat<ll[1]) or all(lat>rr[1]):
@@ -153,6 +154,19 @@ def plot_trails(tmap,
 
     ax.set_xlim(ll[0],rr[0])
     ax.set_ylim(ll[1],rr[1])
+
+    if aspect:
+        # keep aspect ratio by adjusting figure size. Normalize to longest side
+        if (rr[1]-ll[1]) > (rr[0]-ll[0]):
+            fsy = fs
+            fsx = fs * (rr[0]-ll[0])/(rr[1]-ll[1])
+        elif (rr[0]-ll[0]) > (rr[1]-ll[1]):
+            fsx = fs
+            fsy = fs * (rr[1]-ll[1])/(rr[0]-ll[0])
+        else:
+            fsx = fsy = fs
+
+        fig.set_size_inches(fsx,fsy)
 
     if show_profile:
         ax = all_ax[1]
