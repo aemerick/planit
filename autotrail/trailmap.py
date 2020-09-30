@@ -192,6 +192,7 @@ class TrailMap(nx.Graph):
         self._default_weight_factors = {'distance'         : 1,
                                         'elevation_gain'   : 1,
                                         'elevation_loss'   : 1,      # off
+                                        'average_grade' : 0,
                                         'average_min_grade'        : 0,           # off
                                         'average_max_grade'        : 0,           # off
                                         'traversed_count'  : 100,    # very on
@@ -304,7 +305,7 @@ class TrailMap(nx.Graph):
         TODO: Test if making these NEGATIVE works (could be useful)
         """
 
-        # AJE: Maybe weight grade by distance of segment to target? that way 
+        # AJE: Maybe weight grade by distance of segment to target? that way
         #      we can allow steep bits if needed
 
         # need a list of what we are considering
@@ -318,7 +319,7 @@ class TrailMap(nx.Graph):
             features = ['distance', 'elevation_gain', 'elevation_loss']
 
 
-        def _compute_grade_weight(key, edict):
+        def _compute_grade_weight(key, edict, absval=False):
             """
             Helper function for doing grade scalings.
             Currently computing distance in scaled variables. But maybe better to compute
@@ -330,7 +331,10 @@ class TrailMap(nx.Graph):
             """
 
 #            val = 1 - (self._scale_var[key](key,target_values.get(key,edict[key])) - edict[key+'_scaled'])))**2
-            val = 1 - (target_values.get(key,edict[key]) - edict[key])**2
+            if absval:
+                val = 1 - (np.abs(target_values.get(key,edict[key])) - np.abs(edict[key]))**2
+            else:
+                val = 1 - (target_values.get(key,edict[key]) - edict[key])**2
             val = np.max([val,0.0])
             return self._weight_factors[key] * val
 
@@ -350,12 +354,16 @@ class TrailMap(nx.Graph):
                 d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_loss_scaled']
                 d['weight'] += _compute_grade_weight('average_max_grade',d)
                 d['weight'] += _compute_grade_weight('average_min_grade',d)
+                d['weight'] += _compute_grade_weight('average_grade',d,absval=True)
 
             else:
                 d['weight'] += self._weight_factors['elevation_loss'] * d['elevation_gain_scaled']
                 d['weight'] += self._weight_factors['elevation_gain'] * d['elevation_loss_scaled']
-                d['weight'] += _compute_grade_weight('average_max_grade',d) * (self._weight_factors['average_min_grade']/self._weight_factors['average_max_grade'])
-                d['weight'] += _compute_grade_weight('average_min_grade',d) * (self._weight_factors['average_max_grade']/self._weight_factors['average_min_grade'])
+                d['weight'] += _compute_grade_weight('average_grade',d,absval=True)
+                if (self._weight_factors['average_max_grade'] > 0):
+                    d['weight'] += _compute_grade_weight('average_max_grade',d) * (self._weight_factors['average_min_grade']/self._weight_factors['average_max_grade'])
+                if (self._weight_factors['average_min_grade'] > 0):
+                    d['weight'] += _compute_grade_weight('average_min_grade',d) * (self._weight_factors['average_max_grade']/self._weight_factors['average_min_grade'])
 
             #
             # Backtrack penalty
@@ -658,6 +666,10 @@ class TrailMap(nx.Graph):
         fractional_error = {}
         for k in all_totals[0].keys():
 
+            # treat these as limits / ranges not targets to hit for now
+            if k in ['average_grade','average_max_grade','average_min_grade','max_grade','min_grade']:
+                continue
+
             vals                = np.array([all_totals[i][k] for i in range(num_routes)])
             fractional_error[k] = np.abs(vals - target_values[k]) / target_values[k]
 
@@ -774,7 +786,7 @@ class TrailMap(nx.Graph):
         default_target_methods  = {'distance' : np.sum,
                                    'average_max_grade'      : np.max,
                                    'average_min_grade' : np.min,
-                                   'average_grade'  : np.average,
+                                   'average_grade'  :(lambda x : np.max(np.abs(x))),
                                    'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
                                    'traversed_count' : np.sum}
 
@@ -859,8 +871,13 @@ class TrailMap(nx.Graph):
             #
             # get a list of all possible paths within a desired distance:
             #
+
+            # can do better sucess / failure here and try once with target values
+            # then try a second time without target values, with a error message
+            # saying constraints not satisfied.
             next_node = self.get_intermediate_node(current_node,
                                                    remaining['distance'],
+                                                   target_values=target_values,
                                                    G=subG, epsilon=epsilon)
             if next_node < 0:
                 self._dprint("Next node not found!")
@@ -968,6 +985,7 @@ class TrailMap(nx.Graph):
                    'elevation_loss' : self.reduce_edge_data('elevation_loss', edges=edges, function=np.sum),
                    'average_min_grade' : self.reduce_edge_data('average_min_grade', edges=edges, function=np.min),
                    'average_max_grade' : self.reduce_edge_data('average_max_grade', edges=edges, function=np.max),
+                   'average_grade' : self.reduce_edge_data('average_grade', edges=edges, function= (lambda x : np.max(np.abs(x)))),
                    'max_altitude' : np.max(elevations),
                    'min_altitude' : np.min(elevations)}
         totals['repeated_percent'] = repeated / totals['distance'] * 100.0
@@ -985,19 +1003,21 @@ class TrailMap(nx.Graph):
             totals['distance'] = totals['distance'] / 1000.0
 
         if verbose and header:
-            print("%13s %13s %13s %13s %13s %13s %13s %13s"%("Distance "+du, "Elev. + "+eu, "Elev. - "+eu, "Min Elev. "+eu, "Max Elev. "+eu, "Min Grade (%)", "Max Grade (%)", "Repeated (%)"))
+            print("%13s %13s %13s %13s %13s %13s %13s %13s %13s"%("Distance "+du, "Elev. + "+eu, "Elev. - "+eu, "Min Elev. "+eu, "Max Elev. "+eu, "Min Grade (%)", "Max Grade (%)", "Avg Grade (%)", "Repeated (%)"))
 
         if verbose:
-            print("%13.2f %13i %13i %13i %13i %13.2f %13.2f %13.2f"%(totals['distance'],
+            print("%13.2f %13i %13i %13i %13i %13.2f %13.2f %13.2f %13.2f"%(totals['distance'],
                                                                      totals['elevation_gain'], totals['elevation_loss'],
                                                                      totals['min_altitude'],totals['max_altitude'],
                                                                      totals['average_min_grade'],totals['average_max_grade'],
+                                                                     totals['average_grade'],
                                                                      totals['repeated_percent']))
 
         return totals
 
     def get_intermediate_node(self, current_node, target_distance,
-                                    epsilon=0.25, shift = 0.1, weight='distance',
+                                    epsilon=0.1, shift = 0.1, weight='distance',
+                                    target_values = {}, max_iterations = 100,
                                     G=None, recursive = True):
 
         """
@@ -1030,7 +1050,13 @@ class TrailMap(nx.Graph):
         next_node = None
 
         failed = False
+
+        all_next_nodes = []
+        next_node_weights = [] # to help choosing least worst if we have to
+        iteration_count = -1
+
         while next_node is None:
+            iteration_count += 1
 
             # This should ensure that point is actually reachable
             # print(G)
@@ -1038,13 +1064,12 @@ class TrailMap(nx.Graph):
             all_possible_points = nx.single_source_dijkstra(G, current_node,
                                                             weight=weight,
                                                             cutoff=(epsilon+shift)*target_distance)
-            #self._dprint("get_intermediate_node: epsilon = %.3f"%(epsilon))
 
             if len(all_possible_points[0]) == 1:
                 if epsilon > 1.0:
                     self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
-                    failed = True
-                    next_node = -1
+                    failed    = True
+                    next_node = None
                     #raise RuntimeError
 
                 #self._dprint("Increasing epsilon in loop %f"%(epsilon))
@@ -1057,8 +1082,8 @@ class TrailMap(nx.Graph):
             if len(possible_points) == 0:
                 if epsilon > 1.0:
                     self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
-                    failed = True
-                    next_node = -1
+                    failed    = True
+                    next_node = None
                     #raise RuntimeError
 
                 #self._dprint("Increasing epsilon in loop %f"%(epsilon))
@@ -1066,17 +1091,71 @@ class TrailMap(nx.Graph):
                 continue
 ######### AJE - trset above
             # select one at random!!!
-            next_node = random.choice(possible_points)
 
-        if failed and recursive:
-            next_node = self.get_intermediate_node(current_node,target_distance,epsilon = 0.1,
-                                                   shift = 0.1, weight=weight, G = G, recursive=False)
+            next_node = None
+            random.shuffle(possible_points) # in-place for some reason
+            j = 0
+            while (next_node is None) and (j < len(possible_points)) and (epsilon <= 1.0):
+                next_node = possible_points[j] # choose this
 
-            if next_node < 0:
-                return -1
+                if len(target_values) > 0:
+                    # if target values array exists, then we need to check and see if
+                    # this path violates contraints. FOcusing on min max grade for now
+                    #
+                    # TO DO - keep track of which node is the LEAST worse and settle on
+                    #         that if this all fails!!!!!!
+                    #
+                    value_checks = ['average_max_grade','average_min_grade', 'average_grade']
+                    fdict = {'average_max_grade' : np.max, 'average_min_grade': np.min, 'average_grade' : (lambda x : np.max(np.abs(x)))}
+
+                    weighted_path = nx.shortest_path(G, current_node, next_node, weight='weight')
+
+                    for k in value_checks:
+                        if k in target_values.keys():
+#                            if len(weighted_path) == 0:
+#                                self._print(k, current_node, next_node, target_values[k], weighted_path)
+                            reduced       = self.reduce_edge_data(k, nodes = weighted_path, function=fdict[k])
+                            if reduced > target_values[k]:
+                                self._dprint("Next node failing on grade ", next_node, reduced, target_values[k])
+
+                                all_next_nodes.append(next_node)
+                                next_node_weights.append( self.reduce_edge_data('weight',nodes=weighted_path,function=np.sum))
+
+                                next_node = None
+                                error_code = "Target value fail"
+                                break # break out of key for loop
 
 
-        return next_node
+
+                j = j + 1
+            # end while loop
+
+
+
+            if (next_node is None) or (iteration_count > max_iterations):
+                if ((epsilon > 1.0) and ((error_code == "Target value fail")) or (iteration_count > max_iterations)):
+                    self._dprint("WARNING: Unable to satisfy all criteria. Choosing least worst point")
+                    next_node = all_next_nodes[np.argmin(next_node_weights)]
+                elif (epsilon > 1.0):
+                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    failed = True
+                    next_node = -1
+                    error_code = "no points found"
+
+                epsilon   = epsilon + shift
+                continue
+
+
+        #if failed and recursive:
+        #    next_node = self.get_intermediate_node(current_node,target_distance,epsilon = 0.1,
+        #                                           target_values = target_values,
+        #                                           shift = 0.1, weight=weight, G = G, recursive=False)
+        #
+        #    if next_node < 0:
+        #        return -1
+
+
+        return next_node #, error_code
 
     def _print(self, msg, *args, **kwargs):
         """
