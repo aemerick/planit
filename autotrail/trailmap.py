@@ -170,6 +170,7 @@ class TrailMap(nx.Graph):
 
         self.edge_attributes = ['distance','elevation_gain', 'elevation_loss', 'elevation_change',
                                 'min_grade','max_grade','average_grade',
+                                'average_min_grade', 'average_max_grade',
                                 'min_altitude','max_altitude','average_altitude',
                                 'traversed_count', 'in_another_route']
         self.ensure_edge_attributes()
@@ -185,8 +186,8 @@ class TrailMap(nx.Graph):
         self._default_weight_factors = {'distance'         : 1,
                                         'elevation_gain'   : 1,
                                         'elevation_loss'   : 1,      # off
-                                        'min_grade'        : 0,           # off
-                                        'max_grade'        : 0,           # off
+                                        'average_min_grade'        : 0,           # off
+                                        'average_max_grade'        : 0,           # off
                                         'traversed_count'  : 100,    # very on
                                         'in_another_route' : 5}    # medium on
 
@@ -407,6 +408,8 @@ class TrailMap(nx.Graph):
 
         if nodes is None:
             nodes = self.nodes(data=True)
+        elif not type(nodes[0], tuple):
+            nodes = [(n,self.nodes[n]) for n in nodes]
 
         if (key == 'index') and not (key in list(nodes)[0][1].keys()):
             values_array = np.array([n for n,d in nodes])
@@ -489,10 +492,13 @@ class TrailMap(nx.Graph):
             result['elevation_loss'] = result['elevation_gain']*1.0
             result['elevation_gain'] = val*1.0
 
-        if 'min_grade' in result.keys():
-            val = result['max_grade']
+        if 'average_min_grade' in result.keys():
+            val = result['average_min_grade']
+            result['average_min_grade'] = -1.0 * result['average_max_grade']
+            result['average_max_grade'] = -1.0 * val
+            val = result['min_grade']
             result['min_grade'] = -1.0 * result['max_grade']
-            result['max_grade'] = -1.0 * result['min_grade']
+            result['max_grade'] = -1.0 * val
 
         if 'geometry' in result.keys():
             result['geometry'] = shapely.geometry.LineString(result['geometry'].coords[::-1])
@@ -716,8 +722,10 @@ class TrailMap(nx.Graph):
                           in graph (if present). Default : True
 
         """
-        default_target_methods  = {'distance' : np.sum,       'max_grade'      : np.max,
-                                   'min_grade' : np.min,      'average_grade'  : np.average,
+        default_target_methods  = {'distance' : np.sum,
+                                   'average_max_grade'      : np.max,
+                                   'average_min_grade' : np.min,
+                                   'average_grade'  : np.average,
                                    'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
                                    'traversed_count' : np.sum}
 
@@ -909,8 +917,8 @@ class TrailMap(nx.Graph):
         totals = { 'distance' : np.sum(distances),
                    'elevation_gain' : self.reduce_edge_data('elevation_gain', edges=edges, function=np.sum),
                    'elevation_loss' : self.reduce_edge_data('elevation_loss', edges=edges, function=np.sum),
-                   'min_grade' : self.reduce_edge_data('min_grade', edges=edges, function=np.min),
-                   'max_grade' : self.reduce_edge_data('max_grade', edges=edges, function=np.max),
+                   'average_min_grade' : self.reduce_edge_data('average_min_grade', edges=edges, function=np.min),
+                   'average_max_grade' : self.reduce_edge_data('average_max_grade', edges=edges, function=np.max),
                    'max_altitude' : np.max(elevations),
                    'min_altitude' : np.min(elevations)}
         totals['repeated_percent'] = repeated / totals['distance'] * 100.0
@@ -931,9 +939,11 @@ class TrailMap(nx.Graph):
             print("%13s %13s %13s %13s %13s %13s %13s %13s"%("Distance "+du, "Elev. + "+eu, "Elev. - "+eu, "Min Elev. "+eu, "Max Elev. "+eu, "Min Grade (%)", "Max Grade (%)", "Repeated (%)"))
 
         if verbose:
-            print("%13.2f %13i %13i %13i %13i %13.2f %13.2f %13.2f"%(totals['distance'], totals['elevation_gain'], totals['elevation_loss'],
-                                                                      totals['min_altitude'],totals['max_altitude'],totals['min_grade'],totals['max_grade'],
-                                                                      totals['repeated_percent']))
+            print("%13.2f %13i %13i %13i %13i %13.2f %13.2f %13.2f"%(totals['distance'],
+                                                                     totals['elevation_gain'], totals['elevation_loss'],
+                                                                     totals['min_altitude'],totals['max_altitude'],
+                                                                     totals['average_min_grade'],totals['average_max_grade'],
+                                                                     totals['repeated_percent']))
 
         return totals
 
