@@ -693,8 +693,10 @@ def process_data(input_gdf,
         _gdf.at[i,'elevation_loss']   = np.abs(np.sum( dz[dz<0] ))  # store as pos val
         _gdf.at[i,'elevation_change'] = _gdf.iloc[i]['elevation_gain'] + _gdf.iloc[i]['elevation_loss']
         _gdf.at[i,'min_grade']        = np.min(grade)
-        _gdf.at[i,'max_grad']         = np.max(grade)
+        _gdf.at[i,'max_grade']         = np.max(grade)
         _gdf.at[i,'average_grade']    = np.average(grade, weights = distances) # weighted avg!!
+        _gdf.at[i,'average_max_grade']    = np.average(grade[grade>0], weights = distances[grade>0]) # weighted avg!!
+        _gdf.at[i,'average_min_grade']    = np.average(grade[grade<0], weights = distances[grade<0]) # weighted avg!!
         _gdf.at[i,'min_altitude']     = np.min(elevations)
         _gdf.at[i,'max_altitude']     = np.max(elevations)
         _gdf.at[i,'average_altitude'] = np.average(0.5*(elevations[1:]+elevations[:-1]),weights=distances)
