@@ -131,7 +131,8 @@ def plot_trails(tmap,
             lencount = 0
             maxlen   = np.size(tmap.reduce_edge_data('distances',edges=edges,function=None))
 
-        for (u,v) in edges:
+        for e in edges:
+            u,v = e[0], e[1]
             long = [c[0] for c in tmap.edges[(u,v)]['geometry'].coords]
             lat  = [c[1] for c in tmap.edges[(u,v)]['geometry'].coords]
 
