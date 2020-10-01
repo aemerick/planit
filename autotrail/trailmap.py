@@ -234,8 +234,8 @@ class TrailMap(nx.Graph):
                 self._scalings[k]['max_val'] = self.reduce_edge_data(k,function=np.max)
                 self._scalings[k]['max_min'] = self._scalings[k]['max_val'] - self._scalings[k]['min_val']
 
-            if (not (k in self._scale_var.keys())) or reset:
-                self._scale_var[k] = lambda key, var : (var - self._scalings[key]['min_val']) / self._scalings[key]['max_min']
+            #if (not (k in self._scale_var.keys())) or reset:
+            #    self._scale_var[k] = lambda key, var : (var - self._scalings[key]['min_val']) / self._scalings[key]['max_min']
 
         for k in self.edge_attributes: # need error checking for non quantiative values - also JUST DO THIS ONCE (AJE)
 
@@ -243,7 +243,7 @@ class TrailMap(nx.Graph):
                 continue
 
             for e in self.edges(data=True):
-                e[2][k+'_scaled'] = self._scale_var[k](k,e[2][k])
+                e[2][k+'_scaled'] = (e[2][k] - self._scalings[k]['min_val']) / self._scalings[k]['max_min']
 
         return
 
@@ -394,7 +394,10 @@ class TrailMap(nx.Graph):
         route_line = self.reduce_edge_data('geometry', edges=edges, function = gpx_process.combine_gpx)
 
         if coords_only:
-            route_line = [(c[1],c[0],c[2]) for c in route_line.coords]
+            if elevation:
+                route_line = [(c[1],c[0],c[2]) for c in route_line.coords]
+            else:
+                route_line = [(c[1],c[0]) for c in route_line.coords]
 
         if in_json:
             if elevation:
@@ -410,7 +413,6 @@ class TrailMap(nx.Graph):
         GPX .xml file containing lat and long coordinates with
         elevation.
         """
-
         route_line = self.get_route_coords(nodes=nodes,edges=edges, elevation=elevation)
         #
         # Take points from route_line (LineString object) and place into a
@@ -436,7 +438,6 @@ class TrailMap(nx.Graph):
 
         with open(outname, 'w') as f:
             f.write( gpx.to_xml())
-
 
         return
 
@@ -740,6 +741,12 @@ class TrailMap(nx.Graph):
 
         return True
 
+    def _max_abs(self, var):
+        """
+        Helper function. Was a lambda but that can break pickling
+        """
+        return np.abs(np.max(var))
+
     def find_route(self, start_node,
                          target_values,
                          target_methods = None,
@@ -786,7 +793,7 @@ class TrailMap(nx.Graph):
         default_target_methods  = {'distance' : np.sum,
                                    'average_max_grade'      : np.max,
                                    'average_min_grade' : np.min,
-                                   'average_grade'  :(lambda x : np.max(np.abs(x))),
+                                   'average_grade'  : self._max_abs,
                                    'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
                                    'traversed_count' : np.sum}
 
@@ -985,7 +992,7 @@ class TrailMap(nx.Graph):
                    'elevation_loss' : self.reduce_edge_data('elevation_loss', edges=edges, function=np.sum),
                    'average_min_grade' : self.reduce_edge_data('average_min_grade', edges=edges, function=np.min),
                    'average_max_grade' : self.reduce_edge_data('average_max_grade', edges=edges, function=np.max),
-                   'average_grade' : self.reduce_edge_data('average_grade', edges=edges, function= (lambda x : np.max(np.abs(x)))),
+                   'average_grade' : self.reduce_edge_data('average_grade', edges=edges, function= self._max_abs),
                    'max_altitude' : np.max(elevations),
                    'min_altitude' : np.min(elevations)}
         totals['repeated_percent'] = repeated / totals['distance'] * 100.0
@@ -1054,8 +1061,8 @@ class TrailMap(nx.Graph):
         all_next_nodes = []
         next_node_weights = [] # to help choosing least worst if we have to
         iteration_count = -1
-
-        while next_node is None:
+        error_code = ''
+        while (next_node is None) and (iteration_count < max_iterations):
             iteration_count += 1
 
             # This should ensure that point is actually reachable
@@ -1067,9 +1074,10 @@ class TrailMap(nx.Graph):
 
             if len(all_possible_points[0]) == 1:
                 if epsilon > 1.0:
-                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
                     failed    = True
                     next_node = None
+                    break
                     #raise RuntimeError
 
                 #self._dprint("Increasing epsilon in loop %f"%(epsilon))
@@ -1081,9 +1089,10 @@ class TrailMap(nx.Graph):
 ######### AJE test below
             if len(possible_points) == 0:
                 if epsilon > 1.0:
-                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
                     failed    = True
                     next_node = None
+                    break
                     #raise RuntimeError
 
                 #self._dprint("Increasing epsilon in loop %f"%(epsilon))
@@ -1106,7 +1115,7 @@ class TrailMap(nx.Graph):
                     #         that if this all fails!!!!!!
                     #
                     value_checks = ['average_max_grade','average_min_grade', 'average_grade']
-                    fdict = {'average_max_grade' : np.max, 'average_min_grade': np.min, 'average_grade' : (lambda x : np.max(np.abs(x)))}
+                    fdict = {'average_max_grade' : np.max, 'average_min_grade': np.min, 'average_grade' : self._max_abs}
 
                     weighted_path = nx.shortest_path(G, current_node, next_node, weight='weight')
 
@@ -1129,22 +1138,17 @@ class TrailMap(nx.Graph):
 
                 j = j + 1
             # end while loop
+            if (epsilon > 1.0):
+                self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                failed = True
+                next_node = None
 
 
-
-            if (next_node is None) or (iteration_count > max_iterations):
-                if ((epsilon > 1.0) and ((error_code == "Target value fail")) or (iteration_count > max_iterations)):
-                    self._dprint("WARNING: Unable to satisfy all criteria. Choosing least worst point")
-                    next_node = all_next_nodes[np.argmin(next_node_weights)]
-                elif (epsilon > 1.0):
-                    self._dprint("WARNING: Failed to find an intermediate node. Epsilon maxing out")
-                    failed = True
-                    next_node = -1
-                    error_code = "no points found"
-
-                epsilon   = epsilon + shift
-                continue
-
+        if (next_node is None) or (iteration_count > max_iterations):
+            self._print(next_node, iteration_count, epsilon, error_code)
+            if (error_code == "Target value fail") or (iteration_count > max_iterations):
+                self._dprint("WARNING: Unable to satisfy all criteria. Choosing least worst point")
+                next_node = all_next_nodes[np.argmin(next_node_weights)]
 
         #if failed and recursive:
         #    next_node = self.get_intermediate_node(current_node,target_distance,epsilon = 0.1,
