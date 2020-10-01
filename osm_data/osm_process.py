@@ -100,8 +100,9 @@ def process_ox(osx_graph, hiking_only = True):
     # make the map!
     tmap = TrailMap()
     tmap.graph['crs'] = osx_graph.graph['crs']
-    tmap.add_edges_from(edges)
     tmap.add_nodes_from(nodes)
+    tmap.add_edges_from(edges)
+#    tmap.add_nodes_from(nodes)
 
     return tmap
 
@@ -305,7 +306,7 @@ def test():
 
 
     print("Success: ",type(tmap))
-    return
+    return tmap
 
 if __name__ == '__main__':
     test()
