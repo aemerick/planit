@@ -36,6 +36,10 @@ random.seed(12345)
 m_to_ft = 3.28084
 m_to_mi = 0.000621371
 
+# note to self that I'm not really using multidigraph the most general way
+# assuming ALL edges are bi-diretional and there is only one path node-to-node
+_IDIR = 0
+
 class Graph():
     """
     A soon-to-be defunct class originally made for the trail map graphs.
@@ -159,8 +163,8 @@ def define_graph(graphnum=0):
     return graph
 
 
-
-class TrailMap(nx.Graph):
+#networkx.
+class TrailMap(nx.MultiDiGraph):
     """
     TrailMap class to handle trail Graphs and a
     traversing algorithm.
@@ -168,7 +172,7 @@ class TrailMap(nx.Graph):
 
     def __init__(self, name = '', debug = False, *args, **kwargs):
 
-        nx.Graph.__init__(self, *args, **kwargs)
+        nx.MultiDiGraph.__init__(self, *args, **kwargs)
         self.name = name
 
         self.debug = debug # debugging print statements
@@ -340,7 +344,7 @@ class TrailMap(nx.Graph):
 
         for u,v,d in edges:
 
-            max_tail_distance = np.max([self._adj[u][v]['distance_scaled'] for v in self._adj[u]])
+            max_tail_distance = np.max([self._adj[u][v][_IDIR]['distance_scaled'] for v in self._adj[u]])
 
             # apply weights for all '_scaled' properties using simple sum for now
             # need to control this better later. Handle traversed coutn separately
@@ -535,7 +539,7 @@ class TrailMap(nx.Graph):
 
         """
 
-        result = super(TrailMap, self).get_edge_data(u,v,default)
+        result = super(TrailMap, self).get_edge_data(u,v,default)[_IDIR]
 
 
         if u < v:
@@ -597,7 +601,7 @@ class TrailMap(nx.Graph):
             edges = self.edges_from_nodes(nodes)
 
 
-        values_array = [self.get_edge_data(u,v)[key] for (u,v) in edges]
+        values_array = [self.get_edge_data(e[0],e[1])[key] for e in edges]
 
         # only because this is stored (ugh) as a giant string. combine into floats
         if key in ['elevations','distances','grades']:
@@ -928,8 +932,8 @@ class TrailMap(nx.Graph):
 
 
             for tail,head in next_edges:
-                self._adj[tail][head]['traversed_count'] += 1
-                self._adj[tail][head]['in_another_route'] = 1
+                self._adj[tail][head][_IDIR]['traversed_count'] += 1
+                self._adj[tail][head][_IDIR]['in_another_route'] = 1
 
             # add path
             self._dprint("Possible and next: ", possible_routes[iroute], next_path)
@@ -983,8 +987,8 @@ class TrailMap(nx.Graph):
         distances = self.reduce_edge_data('distance', edges=edges, function=None)
 
         repeated = 0.0
-        for i, (u,v) in enumerate(edges):
-            if ((u,v) in edges[:i]) or ((u,v) in edges[i+1:]):
+        for i, e in enumerate(edges):
+            if ( (e[0],e[1]) in edges[:i]) or ((e[0],e[1]) in edges[i+1:]):
                 repeated += distances[i]
 
         totals = { 'distance' : np.sum(distances),

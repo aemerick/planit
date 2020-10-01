@@ -67,9 +67,11 @@ def plot_trails(tmap,
             min_long, max_long = 9999, -10000
             min_lat, max_lat = 9999, -10000
 
-            for (u,v) in edges:
-                long = [c[0] for c in tmap.edges[(u,v)]['geometry'].coords]
-                lat  = [c[1] for c in tmap.edges[(u,v)]['geometry'].coords]
+            for e in edges:
+                u = e[0]
+                v = e[1]
+                long = [c[0] for c in tmap.edges[(u,v,trailmap._IDIR)]['geometry'].coords]
+                lat  = [c[1] for c in tmap.edges[(u,v,trailmap._IDIR)]['geometry'].coords]
 
                 min_long = np.min([min_long,np.min(long)])
                 max_long = np.max([max_long,np.max(long)])
