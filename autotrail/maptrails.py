@@ -133,8 +133,8 @@ def plot_trails(tmap,
 
         for e in edges:
             u,v = e[0], e[1]
-            long = [c[0] for c in tmap.edges[(u,v)]['geometry'].coords]
-            lat  = [c[1] for c in tmap.edges[(u,v)]['geometry'].coords]
+            long = [c[0] for c in tmap.edges[(u,v,trailmap._IDIR)]['geometry'].coords]
+            lat  = [c[1] for c in tmap.edges[(u,v,trailmap._IDIR)]['geometry'].coords]
 
             if u > v:
                 long = long[::-1]
