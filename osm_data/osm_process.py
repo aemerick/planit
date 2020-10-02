@@ -292,6 +292,9 @@ def osmnx_trailmap(center_point = None,
                                    query=query,dist=dist,save_to_file=save_to_file,
                                    allow_cache_load=allow_cache_load)
     tmap     = process_ox(ox_graph)
+    tmap.center_point = ox_graph.center_point
+    tmap.ll = ox_graph.ll
+    tmap.rr = ox_graph.rr
 
     return tmap
 
