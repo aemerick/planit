@@ -1078,7 +1078,7 @@ class TrailMap(nx.MultiDiGraph):
 
             if len(all_possible_points[0]) == 1:
                 if epsilon > 1.0:
-                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+                    self._print("WARNING1: Failed to find an intermediate node. Epsilon maxing out")
                     failed    = True
                     next_node = None
                     break
@@ -1093,7 +1093,8 @@ class TrailMap(nx.MultiDiGraph):
 ######### AJE test below
             if len(possible_points) == 0:
                 if epsilon > 1.0:
-                    self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+
+                    self._print("WARNING2: Failed to find an intermediate node. Epsilon maxing out")
                     failed    = True
                     next_node = None
                     break
@@ -1142,8 +1143,8 @@ class TrailMap(nx.MultiDiGraph):
 
                 j = j + 1
             # end while loop
-            if (epsilon > 1.0):
-                self._print("WARNING: Failed to find an intermediate node. Epsilon maxing out")
+            if (epsilon > 1.0) and (next_node is None):
+                self._print("WARNING3: Failed to find an intermediate node. Epsilon maxing out")
                 failed = True
                 next_node = None
 
@@ -1151,7 +1152,7 @@ class TrailMap(nx.MultiDiGraph):
         if (next_node is None) or (iteration_count > max_iterations):
             self._print(next_node, iteration_count, epsilon, error_code)
             if (error_code == "Target value fail") or (iteration_count > max_iterations):
-                self._dprint("WARNING: Unable to satisfy all criteria. Choosing least worst point")
+                self._dprint("WARNING4: Unable to satisfy all criteria. Choosing least worst point")
                 next_node = all_next_nodes[np.argmin(next_node_weights)]
 
         #if failed and recursive:
@@ -1162,6 +1163,8 @@ class TrailMap(nx.MultiDiGraph):
         #    if next_node < 0:
         #        return -1
 
+        if next_node is None: # leftover from old methods 
+            next_node = -1
 
         return next_node #, error_code
 
