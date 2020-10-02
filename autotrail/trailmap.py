@@ -645,6 +645,9 @@ class TrailMap(nx.MultiDiGraph):
         Scores the results of these routes and returns the top
         `n_routes` (set to None, or inf to return all).
 
+        Parameters:
+        ------------
+
         iterations : (int,optional) Number of times to try the route finder.
 
         """
@@ -1163,7 +1166,7 @@ class TrailMap(nx.MultiDiGraph):
         #    if next_node < 0:
         #        return -1
 
-        if next_node is None: # leftover from old methods 
+        if next_node is None: # leftover from old methods
             next_node = -1
 
         return next_node #, error_code
