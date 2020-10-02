@@ -1,4 +1,10 @@
 *.secret
+*.pickle
+*.geojson
+*.json
+*.graph
+*.gpx
+*.osm
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
