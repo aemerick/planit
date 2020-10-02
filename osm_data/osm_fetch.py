@@ -90,7 +90,7 @@ def get_graph(center_point = None,
     if call_api:
         ox_graph = osmnx.graph_from_bbox(north,south,east,west,
                               retain_all=True, truncate_by_edge=False,
-                              clean_periphery=True)
+                              clean_periphery=True, custom_filter='["highway"~"path|track"]')
 
         ox_graph.center_point = center_point
         ox_graph.ll = ll
