@@ -1,0 +1,4 @@
+Autotrail - TrailMap
+
+This is the main functionality of the Plan-It application, utilizing the
+TrailMap object defined in `trailmap.py`
