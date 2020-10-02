@@ -1,4 +1,4 @@
-# autotrail
+# Plan-It (formerly autotrail)
 
 An application to produce computer-generated hiking and trail running routes
 given a series of user-provided contraints, geared towards the avid
