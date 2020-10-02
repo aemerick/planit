@@ -38,6 +38,7 @@ def plot_trails(tmap,
                 ll = None, rr = None,
                 fs = 6, linecolor='gradient',
                 aspect=False, plot_nodes=False,
+                save_each_iteration=False,
                 show_profile = True, colormap = magma):
     """
     Plot all trails in trailmap in the region selected.
@@ -124,7 +125,29 @@ def plot_trails(tmap,
             print(ll, rr)
 
         ax.plot(long, lat, lw = 1, ls = '--', color = 'black')
+    plt.tight_layout()
+    ax.set_xlim(ll[0],rr[0])
+    ax.set_ylim(ll[1],rr[1])
 
+    if plot_nodes and (not (nodes is None)):
+        node_lat = tmap.reduce_node_data('lat',function=None, nodes=nodes)
+        node_long = tmap.reduce_node_data('long',function=None, nodes=nodes)
+        ax.scatter(node_long, node_lat, s = 80, marker='o',color='black')
+
+    if aspect:
+        # keep aspect ratio by adjusting figure size. Normalize to longest side
+        if (rr[1]-ll[1]) > (rr[0]-ll[0]):
+            fsy = fs
+            fsx = fs * (rr[0]-ll[0])/(rr[1]-ll[1])
+        elif (rr[0]-ll[0]) > (rr[1]-ll[1]):
+            fsx = fs
+            fsy = fs * (rr[1]-ll[1])/(rr[0]-ll[0])
+        else:
+            fsx = fsy = fs
+
+        fig.set_size_inches(fsx,fsy)
+
+    icount = 0
     if not (edges is None):
 
         if linecolor == 'gradient':
@@ -150,31 +173,23 @@ def plot_trails(tmap,
                 lc.set_linewidth(4)
                 line = ax.add_collection(lc)
                 lencount=lencount+len(long)-1
+
+                if (save_each_iteration):
+                    outdir = os.getcwd() + '/movie/'
+                    if not (os.path.isdir(outdir)):
+                        os.mkdir(outdir)
+
+                    fig.savefig(outdir + 'image_%8i.png'%(icount))
+                    icount = icount+1
+
                 #fig.colorbar(line, ax=axs[0])
                 #ax.plot(long,lat,lw=3,ls='-',color=colormap( np.arange(long) / 1.0*np.size(long)) )
             else:
                 ax.plot(long,lat,lw=3,ls='-',color=color[ci])
 
-    ax.set_xlim(ll[0],rr[0])
-    ax.set_ylim(ll[1],rr[1])
 
-    if plot_nodes and (not (nodes is None)):
-        node_lat = tmap.reduce_node_data('lat',function=None, nodes=nodes)
-        node_long = tmap.reduce_node_data('long',function=None, nodes=nodes)
-        ax.scatter(node_long, node_lat, s = 80, marker='o',color='black')
 
-    if aspect:
-        # keep aspect ratio by adjusting figure size. Normalize to longest side
-        if (rr[1]-ll[1]) > (rr[0]-ll[0]):
-            fsy = fs
-            fsx = fs * (rr[0]-ll[0])/(rr[1]-ll[1])
-        elif (rr[0]-ll[0]) > (rr[1]-ll[1]):
-            fsx = fs
-            fsy = fs * (rr[1]-ll[1])/(rr[0]-ll[0])
-        else:
-            fsx = fsy = fs
 
-        fig.set_size_inches(fsx,fsy)
 
     if show_profile:
         ax = all_ax[1]
@@ -198,6 +213,5 @@ def plot_trails(tmap,
 
 
 
-    plt.tight_layout()
 
     return fig, all_ax
