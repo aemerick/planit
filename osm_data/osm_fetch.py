@@ -78,12 +78,15 @@ def get_graph(center_point = None,
 
     call_api = True
     if allow_cache_load:
-        inname = "%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
+        inname = os.getcwd() + "/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
+        print("Trying to find file: ", inname)
         if os.path.isfile(inname):
             with open(inname,'rb') as infile:
                 ox_graph = pickle.load(infile)
 
             call_api = False
+        else:
+            print("cannot find file: ", inname)
 
     if call_api:
         ox_graph = osmnx.graph_from_bbox(north,south,east,west,
@@ -92,11 +95,15 @@ def get_graph(center_point = None,
 
         if save_to_file:
         # pickle!!!!
-            outname = "%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
+            outname = os.getcwd() + "/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
 
             with open(outname,'wb') as outfile:
                 pickle.dump(ox_graph, outfile, protocol = 4)
 
+
+    ox_graph.center_point = center_point
+    ox_graph.ll = ll
+    ox_graph.rr = rr
 
     return ox_graph
 
