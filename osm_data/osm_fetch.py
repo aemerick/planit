@@ -28,7 +28,7 @@ def get_graph(center_point = None,
               ll = None,
               rr = None,
               query=None,
-              dist=100000.0, # 100 km !
+              dist=40233.6, # 100 km !
               save_to_file=True,
               allow_cache_load=True
               ):
@@ -71,14 +71,13 @@ def get_graph(center_point = None,
 
     elif (center_point is None):
         center_point = (0.5 * (ll[0]+rr[0]), 0.5 * (ll[1]+rr[1]))
-    else:
-        raise RuntimeError
+
 
     north,south,east,west = rr[0],ll[0],rr[1],ll[1]
 
     call_api = True
     if allow_cache_load:
-        inname = os.getcwd() + "/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
+        inname = os.getcwd() + "/cache/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
         print("Trying to find file: ", inname)
         if os.path.isfile(inname):
             with open(inname,'rb') as infile:
@@ -93,17 +92,20 @@ def get_graph(center_point = None,
                               retain_all=True, truncate_by_edge=False,
                               clean_periphery=True)
 
+        ox_graph.center_point = center_point
+        ox_graph.ll = ll
+        ox_graph.rr = rr
+        ox_graph.query = query
+        ox_graph.dist = dist
+
         if save_to_file:
         # pickle!!!!
-            outname = os.getcwd() + "/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
+            outname = os.getcwd() + "/cache/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
 
             with open(outname,'wb') as outfile:
                 pickle.dump(ox_graph, outfile, protocol = 4)
 
 
-    ox_graph.center_point = center_point
-    ox_graph.ll = ll
-    ox_graph.rr = rr
 
     return ox_graph
 

@@ -19,11 +19,18 @@
 import numpy as np
 import gpxpy
 import shapely
+import os
+
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 from planit.autotrail.trailmap import TrailMap
 import planit.autotrail.process_gpx_data as gpx_process
 
 from planit.osm_data import osm_fetch
+
 
 
 def process_ox(osx_graph, hiking_only = True):
@@ -280,21 +287,60 @@ def osmnx_trailmap(center_point = None,
               ll = None,
               rr = None,
               query=None,
-              dist=100000.0, # 100 km !
+              dist=40233.6, # 50 miles (in m)
               save_to_file=True,
               allow_cache_load=True):
     """
     Wrapper around all of the get functions. kwargs match those in
     osm_fetch
     """
+    print("OSMNX Trailmap: ", center_point, ll, rr, query, dist)
+    if (center_point is None) and (ll is None) and (rr is None):
+        print("Must choose center coordinates or bounding box!")
+        raise ValueError
+    elif (ll is None) and (rr is None):
+        # bad distance metric.. but this is approximate anyway
+        earth_c = 40.075E6 # km circumference
+        sep     = dist / earth_c * 360.0
+        ll = (center_point[0] - 0.5*sep, center_point[1] - 0.5*sep)
+        rr = (center_point[0] + 0.5*sep, center_point[1] + 0.5*sep)
 
-    ox_graph = osm_fetch.get_graph(center_point=center_point,ll=ll,rr=rr,
-                                   query=query,dist=dist,save_to_file=save_to_file,
-                                   allow_cache_load=allow_cache_load)
-    tmap     = process_ox(ox_graph)
-    tmap.center_point = ox_graph.center_point
-    tmap.ll = ox_graph.ll
-    tmap.rr = ox_graph.rr
+    elif (center_point is None):
+        center_point = (0.5 * (ll[0]+rr[0]), 0.5 * (ll[1]+rr[1]))
+    else:
+        raise RuntimeError
+
+    north,south,east,west = rr[0],ll[0],rr[1],ll[1]
+
+    fname = os.getcwd() + "/cache/%4.5f_%4.5f_%4.5f_%4.5f_TrailMap_graph.pickle"%(north,south,east,west)
+
+    call_api = True
+    tmap = None
+    if allow_cache_load:
+        print("OSM Process Trying to find file: ", fname)
+        if os.path.isfile(fname):
+            with open(fname,'rb') as infile:
+                tmap = pickle.load(infile)
+            call_api = False
+        else:
+            print("OSM Process cannot find file: ", fname)
+
+    if call_api or tmap is None:
+        ox_graph = osm_fetch.get_graph(center_point=center_point,ll=ll,rr=rr,
+                                       query=query,dist=dist,save_to_file=save_to_file,
+                                       allow_cache_load=allow_cache_load)
+        tmap              = process_ox(ox_graph)
+        tmap.center_point = ox_graph.center_point
+        tmap.ll           = ox_graph.ll
+        tmap.rr           = ox_graph.rr
+        tmap.query        = ox_graph.query
+        tmap.dist         = ox_graph.dist
+
+        if save_to_file:
+            with open(fname,'wb') as fname:
+                pickle.dump(tmap, fname, protocol = 4)
+            print("OSM Process - saved file : ", fname )
+
 
     return tmap
 
