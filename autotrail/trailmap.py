@@ -490,7 +490,8 @@ class TrailMap(nx.MultiDiGraph):
 
         repeated = 0.0
         for i, e in enumerate(edges):
-            if ( (e[0],e[1]) in edges[:i]) or ((e[0],e[1]) in edges[i+1:]):
+            if ( (e[0],e[1]) in edges[:i]) or ((e[0],e[1]) in edges[i+1:]) or\
+               ( (e[1],e[0]) in edges[:i]) or ((e[1],e[0]) in edges[i+1:]):
                 repeated += distances[i]
 
         totals = { 'distance' : np.sum(distances),
@@ -1021,7 +1022,7 @@ class TrailMap(nx.MultiDiGraph):
         result = copy.deepcopy(result)
 
         if 'elevation_gain' in result.keys():
-            val = result['elevation_gain'] * 1.0
+            val = result['elevation_loss'] * 1.0
             result['elevation_loss'] = result['elevation_gain']*1.0
             result['elevation_gain'] = val*1.0
 
