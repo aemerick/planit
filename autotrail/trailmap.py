@@ -83,6 +83,8 @@ class TrailMap(nx.MultiDiGraph):
         self._scalings = None
         self._scale_var = None
 
+        self._weight_precision = 6
+
         self._assign_default_weights()
 
         return
@@ -94,6 +96,7 @@ class TrailMap(nx.MultiDiGraph):
                                target_methods=None,
                                primary_weight = 'distance',
                                reinitialize = True,                # reset 'traversed' counter each iteration
+                               subgraph_filter=False,
                                reset_used_counter = False,  # reset used (binary flag) each iteration
                                n_cpus=1):
         """
@@ -136,12 +139,32 @@ class TrailMap(nx.MultiDiGraph):
 
         all_totals = [None] * iterations
         all_routes = [None] * iterations
+
+
+        if subgraph_filter and len(self.nodes) > 1000:
+            # pre-filter graph by generating a sub-graph to speed up computation
+
+            # CAREFUL HERE. this subgraph is a view with mutable node / edge
+            # properties that will be reflected in the parent graph
+            fild_dict, filt_paths =  nx.single_source_dijkstra(self, start_node,
+                                                        weight='distance',
+                                                        cutoff=target_values['distance']*0.75)
+            filtered_nodes = list(filt_paths.keys())
+            subG = self.subgraph(filtered_nodes)
+
+            self._print("SubGraph Filter reduced nodes from %i to %i"%(len(self.nodes),len(subG.nodes)))
+
+        else:
+            subG = self # placeholder to do prefiltering later !!!
+
+
         for niter in range(iterations):
             totals, routes = self.find_route(start_node, target_values,
                                              target_methods=target_methods,
                                              end_node=end_node,
                                              primary_weight=primary_weight,
-                                             reinitialize=reinitialize)
+                                             reinitialize=reinitialize,
+                                             subG = subG)
 
             all_totals[niter], all_routes[niter] = totals, routes
 
@@ -179,7 +202,8 @@ class TrailMap(nx.MultiDiGraph):
                          primary_weight = 'distance',
                          reinitialize=True,
                          reset_used_counter = False,
-                         epsilon=0.25):
+                         epsilon=0.25,
+                         subG=None):
         """
         The core piece of Plan-It
 
@@ -234,6 +258,8 @@ class TrailMap(nx.MultiDiGraph):
                                    'elevation_gain' : np.sum, 'elevation_loss' : np.sum,
                                    'traversed_count' : np.sum}
 
+
+
         #
         # set up totals methods dictionary using input and supply default
         # if not overridden.
@@ -274,7 +300,8 @@ class TrailMap(nx.MultiDiGraph):
         # nx.classes.filters.hide_edges([(2,5)])
         # subG = nx.subgraph_view(G, filter_edge = f)
         #
-        #
+        if subG is None:
+            subG = self
 
         #
         # for now - empty dict we can use to copy multiple times if need be
@@ -306,7 +333,6 @@ class TrailMap(nx.MultiDiGraph):
         remaining = {k:0 for k in totals_methods.keys()} # dict to get remainders to target
         while (keep_looping):
 
-            subG = self # placeholder to do prefiltering later !!!
 
             # need to do checking here to ensure distance is one of the targets (or soemwhere)
             # but here for now
@@ -583,7 +609,7 @@ class TrailMap(nx.MultiDiGraph):
 
             # This should ensure that point is actually reachable
             all_possible_points = nx.single_source_dijkstra(G, current_node,
-                                                            weight=weight,
+                                                            weight=weight, # change to distance?
                                                             cutoff=(epsilon+shift)*target_distance)
 
             if len(all_possible_points[0]) == 1:
@@ -789,6 +815,9 @@ class TrailMap(nx.MultiDiGraph):
             #
             d['weight'] += self._weight_factors['in_another_route']*d['in_another_route']*max_tail_distance
 
+
+            # converting to integers is safer here
+            d['weight'] = int(d['weight']*(10.0**self._weight_precision))
 
         return
 
