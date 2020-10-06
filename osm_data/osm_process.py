@@ -312,6 +312,9 @@ def osmnx_trailmap(center_point = None,
 
     north,south,east,west = rr[0],ll[0],rr[1],ll[1]
 
+    if not os.path.isdir(os.getcwd() + '/cache'):
+        os.mkdir(os.getcwd() + '/cache')
+
     fname = os.getcwd() + "/cache/%4.5f_%4.5f_%4.5f_%4.5f_TrailMap_graph.pickle"%(north,south,east,west)
 
     call_api = True

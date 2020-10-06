@@ -77,6 +77,10 @@ def get_graph(center_point = None,
 
     call_api = True
     if allow_cache_load:
+
+        if not os.path.isdir(os.getcwd() + '/cache'):
+            os.mkdir(os.getcwd() + '/cache')
+
         inname = os.getcwd() + "/cache/%4.5f_%4.5f_%4.5f_%4.5f_osmnx_graph.pickle"%(north,south,east,west)
         print("Trying to find file: ", inname)
         if os.path.isfile(inname):

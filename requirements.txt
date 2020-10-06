@@ -4,7 +4,6 @@ async-generator==1.10
 attrs==20.2.0
 backcall==0.2.0
 backports.functools-lru-cache==1.6.1
-basemap==1.2.1
 bleach==3.2.1
 bokeh==2.2.1
 branca==0.4.1
@@ -27,11 +26,11 @@ Fiona==1.8.17
 Flask==1.1.2
 Flask-Session==0.3.2
 folium==0.11.0
-GDAL==3.1.2
+numpy==1.19.1
+# GDAL==3.1.2
 geographiclib==1.50
 geopandas==0.8.1
 geopy==2.0.0
-gizmo-analysis==1.0
 gpxpy==1.4.2
 idna==2.10
 importlib-metadata==1.7.0
@@ -55,7 +54,6 @@ jupyter-latex-envs==1.4.6
 jupyter-nbextensions-configurator==0.4.1
 jupyterlab-pygments==0.1.1
 kiwisolver==1.2.0
-learntools==0.3.4
 lxml==4.5.2
 MarkupSafe==1.1.1
 matplotlib==3.3.2
@@ -107,8 +105,8 @@ rasterio==1.1.6
 requests==2.24.0
 Rtree==0.9.4
 seaborn==0.11.0
-Send2Trash==1.5.0
-setuptools==49.6.0.post20200917
+#Send2Trash==1.5.0
+#setuptools==49.6.0.post20200917
 Shapely==1.7.1
 six==1.15.0
 snuggs==1.4.7
