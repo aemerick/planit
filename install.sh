@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# To install dependencies you will need:
+conda install -c conda-forge libspatialindex
+
+# and run:
+pip install -r requirements.txt
