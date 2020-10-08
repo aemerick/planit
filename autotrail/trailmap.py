@@ -662,8 +662,11 @@ class TrailMap(nx.MultiDiGraph):
             iteration_count += 1
 
             # This should ensure that point is actually reachable
+            #
+            # would be cool to pick the node with opposite (ish) direction vector
+            # between current node and home (if round trip)
             all_possible_points = nx.single_source_dijkstra(G, current_node,
-                                                            weight=weight, # change to distance?
+                                                            weight='distance',     # worth noting that this should be strict distance (or slightly modified) since we are using a cutoff
                                                             cutoff=(epsilon+shift)*target_distance)
 
             if len(all_possible_points[0]) == 1:
