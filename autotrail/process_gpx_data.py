@@ -6,11 +6,13 @@
 
     LICENSE :GPLv3
 
+    -------- THIS CODE IS NOT CURRENTLY USED SINCE UPDATE TO OSMNX ------------
+    -------  BUT DOES STILL CONTAIN SOME FUNCTIONS NOT YET MOVED TO A DIFF FILE ----
 
     NOTE: The bulk of this code is superceded by the new version which relies on
     OSM data and can be used ANYWHERE. (osm_data/osm_fetch.py). Though that
     borrows heavily on the routines here. These functions remain for
-    backwards compatability.
+    backwards compatability with the old statsets.
 
     Processing the trail data from Boulder County into a form useable for
     routing. Identifies most trail intersections and converts all segments

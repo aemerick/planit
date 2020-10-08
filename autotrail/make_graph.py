@@ -1,3 +1,19 @@
+"""
+
+    Author  : Andrew Emerick
+    e-mail  : aemerick11@gmail.com
+    year    : 2020
+
+    LICENSE :GPLv3
+
+
+    NOTE: This code was used for plotting of the OLD Boulder, CO datasets
+    and is now defunct after the switch to OSM data.
+
+    Auto-generated hiking and trail running routes in Boulder, CO
+    based on known trail data and given user-specified contraints.
+"""
+
 import geopandas as geopd
 import os, sys
 
