@@ -20,4 +20,8 @@ is not yet implemented to work with this application.
 
 Still very much building this! 
 
-Front-end hosted here: https://github.com/aemerick/autotrail_app
+Plan-It trails is hosted here : planit-trails.website
+(Please be gentle, trying to keep server costs low, but do let me 
+know if it breaks: aemerick11@gmail.com)
+
+Code for front-end here: https://github.com/aemerick/autotrail_app
