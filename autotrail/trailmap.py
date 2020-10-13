@@ -72,9 +72,9 @@ class TrailMap(nx.MultiDiGraph):
         self._default_weight_factors = {'distance'          : 1,
                                         'elevation_gain'    : 1,
                                         'elevation_loss'    : 0,      # off
-                                        'average_min_grade' : 100,           # off
-                                        'average_max_grade' : 100,           # off
-                                        'average_grade'     : 100,
+                                        'average_min_grade' : 1,           # off
+                                        'average_max_grade' : 1,           # off
+                                        'average_grade'     : 1,
                                         'traversed_count'   : 10.0,    # very on
                                         'in_another_route'  : 0}
 
@@ -222,14 +222,14 @@ class TrailMap(nx.MultiDiGraph):
         all_routes = [None] * iterations
 
 
-        if subgraph_filter and len(self.nodes) > 1:
+        if subgraph_filter and len(self.nodes) > 50:
             # pre-filter graph by generating a sub-graph to speed up computation
 
             # CAREFUL HERE. this subgraph is a view with mutable node / edge
             # properties that will be reflected in the parent graph
-            fild_dict, filt_paths =  nx.single_source_dijkstra(self, start_node,
+            filt_dict, filt_paths =  nx.single_source_dijkstra(self, start_node,
                                                         weight='distance',
-                                                        cutoff=target_values['distance']*0.75)
+                                                        cutoff=target_values['distance']*0.85)
             filtered_nodes = list(filt_paths.keys())
             subG = self.subgraph(filtered_nodes)
 
@@ -237,6 +237,9 @@ class TrailMap(nx.MultiDiGraph):
 
             subG._neg_weight = False
             self._neg_weight = False
+
+            if hasattr(self, 'backtrack'):  # hacking this for now
+                subG.backtrack = self.backtrack
 
         else:
             subG = self # placeholder to do prefiltering later !!!
@@ -356,7 +359,6 @@ class TrailMap(nx.MultiDiGraph):
         totals_methods = {}
         for k in target_values.keys():
             totals_methods[k] = target_methods[k] if k in target_methods.keys() else default_target_methods[k]
-
 
         #
         # do some initial error checking to make sure that things CAN work
@@ -766,6 +768,9 @@ class TrailMap(nx.MultiDiGraph):
 
                     for k in value_checks:
                         if k in target_values.keys():
+                            if 'grade' in k:
+                                continue
+                                
 #                            if len(weighted_path) == 0:
 #                                self._print(k, current_node, next_node, target_values[k], weighted_path)
                             reduced       = self.reduce_edge_data(k, nodes = weighted_path, function=fdict[k])
@@ -870,7 +875,6 @@ class TrailMap(nx.MultiDiGraph):
         wf = copy.deepcopy(self._weight_factors)
         self._neg_weight = False
 
-        print("weight factors:", wf)
 
         def _compute_grade_weight(key, edict):
             """
@@ -1288,6 +1292,7 @@ class TrailMap(nx.MultiDiGraph):
             else:
                 self._weight_factors[k] = self._default_weight_factors[k]
 
+
         return
 
     def _assign_weights(self, target_values):
@@ -1302,12 +1307,10 @@ class TrailMap(nx.MultiDiGraph):
             if not (k in target_values.keys()):
                 self._weight_factors[k] = 0.0
 
-        # AJE:
-        #    maybe set loop here to set values to negative or positive weights
+        self._weight_factors['traversed_count'] = self._default_weight_factors['traversed_count']
 
-        # for now... need to fix this...
-        for k in ['traversed_count','in_another_route']:
-            self._weight_factors[k] = self._default_weight_factors[k]
+        if hasattr(self,'backtrack'):
+            self._weight_factors['traversed_count'] = self.backtrack
 
         return
 
