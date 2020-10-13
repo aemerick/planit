@@ -94,15 +94,37 @@ class TrailMap(nx.MultiDiGraph):
                                           target_values_range,
                                           n_routes = 5,
                                           n_constraints = 3,
+                                          route_factor = 1,
                                           **kwargs):
         """
         Uses multiple calls to multi_find_route to choose better routes
-        along a few different ranges.
-
-        If the distance objective range is < 10% of the max distance objective,
+        along a few different ranges. If the distance objective range is < 10%
+        of the max distance objective,
         this is too narrow and only ONE constraint objective is generated.
         Otherwise samples the range over `n_constraints` times to create
         a larger variety of posible routes.
+
+        Additional kwargs are passed to `multi_find_route`.
+
+        Parameters:
+        -----------
+        start_node : int. beginning node index
+        target_values_range : dictionary of tuples representing constraint ranges
+                              OR individual values if no constraint range needed.
+                              Assumes that distance and elevation gain (if present)
+                              are tuples.
+        n_routes: Optional, int. Number of best-fit routes to return. Default : 5
+        n_constraints : Optional, int. Number of sub-constraints to compute over.
+                        For each, computes `n_routes` best fits. Default : 3
+        route_factor : Optional, int. Extra factor of route to compute per constraint.
+                       Number of routes computed in total is
+                       `n_routes*n_constraints*route_factor`. Default : 1
+
+        Returns:
+        ----------
+        all_totals  :  List of dictionaries of total quantities for each route
+        all_routes  :  List of routes, defined as an ordered list of connected nodes
+        all_errors  :  The scores for each route.
         """
 
         if (target_values_range['distance'][1] - target_values_range['distance'][0]) <\
@@ -128,7 +150,6 @@ class TrailMap(nx.MultiDiGraph):
                 target_values_array[i]['elevation_gain'] = target_values_range['elevation_gain'][0] + (ini_factor+factor*i)*diff
 
         #
-
         # Run the route finder three times!
         #
         totals = []
@@ -137,7 +158,7 @@ class TrailMap(nx.MultiDiGraph):
         for i in range(n_constraints):
             temp_totals, temp_pr, temp_error = self.multi_find_route(start_node,
                                                                      target_values_array[i],
-                                                                     n_routes=n_routes,
+                                                                     n_routes=n_routes*route_factor,
                                                                      **kwargs)
 
             totals.extend(temp_totals)
