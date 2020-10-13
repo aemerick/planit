@@ -24,6 +24,63 @@ except:
 
 #
 
+import math
+
+# degrees to radians
+def deg2rad(degrees):
+    return math.pi*degrees/180.0
+# radians to degrees
+def rad2deg(radians):
+    return 180.0*radians/math.pi
+
+# Semi-axes of WGS-84 geoidal reference
+WGS84_a = 6378137.0  # Major semiaxis [m]
+WGS84_b = 6356752.3  # Minor semiaxis [m]
+
+
+#
+#
+# ============================================================================
+# Coordinate conversions below taken from stackoverflow
+# https://stackoverflow.com/questions/238260/how-to-calculate-the-bounding-box-for-a-given-lat-lng-location
+# =============================================================================
+#
+#
+import math
+
+# Earth radius at a given latitude, according to the WGS-84 ellipsoid [m]
+def WGS84EarthRadius(lat):
+    # http://en.wikipedia.org/wiki/Earth_radius
+    An = WGS84_a*WGS84_a * math.cos(lat)
+    Bn = WGS84_b*WGS84_b * math.sin(lat)
+    Ad = WGS84_a * math.cos(lat)
+    Bd = WGS84_b * math.sin(lat)
+    return math.sqrt( (An*An + Bn*Bn)/(Ad*Ad + Bd*Bd) )
+
+# Bounding box surrounding the point at given coordinates,
+# assuming local approximation of Earth surface as a sphere
+# of radius given by WGS84
+def boundingBox(latitudeInDegrees, longitudeInDegrees, halfSideInKm):
+    lat = deg2rad(latitudeInDegrees)
+    lon = deg2rad(longitudeInDegrees)
+    halfSide = 1000*halfSideInKm
+
+    # Radius of Earth at given latitude
+    radius = WGS84EarthRadius(lat)
+    # Radius of the parallel at given latitude
+    pradius = radius*math.cos(lat)
+
+    latMin = lat - halfSide/radius
+    latMax = lat + halfSide/radius
+    lonMin = lon - halfSide/pradius
+    lonMax = lon + halfSide/pradius
+
+    return (rad2deg(latMin), rad2deg(lonMin), rad2deg(latMax), rad2deg(lonMax))
+
+#
+# ==============================================================================
+#
+
 def get_graph(center_point = None,
               ll = None,
               rr = None,
@@ -63,11 +120,11 @@ def get_graph(center_point = None,
         print("Must choose center coordinates or bounding box!")
         raise ValueError
     elif (ll is None) and (rr is None):
-        # bad distance metric.. but this is approximate anyway
-        earth_c = 40.075E6 # km circumference
-        sep     = dist / earth_c * 360.0
-        ll = (center_point[0] - 0.5*sep, center_point[1] - 0.5*sep)
-        rr = (center_point[0] + 0.5*sep, center_point[1] + 0.5*sep)
+
+        # bounding box coordinates with distance in km
+        bbox = boundingBox(center_point[0], center_point[1], 0.5*dist/1000.0)
+        ll   = (bbox[0],bbox[1])
+        rr   = (bbox[2],bbox[3])
 
     elif (center_point is None):
         center_point = (0.5 * (ll[0]+rr[0]), 0.5 * (ll[1]+rr[1]))
