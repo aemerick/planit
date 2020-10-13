@@ -90,36 +90,59 @@ class TrailMap(nx.MultiDiGraph):
 
         return
 
-    def find_route_constraint_range(self, start_node, target_values_range, n_routes = 5, **kwargs):
+    def find_route_constraint_range(self, start_node,
+                                          target_values_range,
+                                          n_routes = 5,
+                                          n_constraints = 3,
+                                          **kwargs):
         """
         Uses multiple calls to multi_find_route to choose better routes
         along a few different ranges.
+
+        If the distance objective range is < 10% of the max distance objective,
+        this is too narrow and only ONE constraint objective is generated.
+        Otherwise samples the range over `n_constraints` times to create
+        a larger variety of posible routes.
         """
 
-        if (target_values_range['distance'][1] - target_values_range['distance'][0]) >\
+        if (target_values_range['distance'][1] - target_values_range['distance'][0]) <\
            0.10*target_values_range['distance'][1]:
+           n_constraints = 1
 
-            target_values_array = [None,None,None]
-            for i in range(3):
-                target_values_array[i] = copy.deepcopy(target_values_range)
+        target_values_array = [None] * n_constraints
+        if n_constraints > 1:
+            factor = (0.8) / (n_constraints - 1.0)
+            ini_factor = 0.1
+        else:
+            factor     = 0.0 # doesn't matter here
+            ini_factor = 0.5 # just hit halfway
 
-                diff = target_values_range['distance'][1] - target_values_range['distance'][0]
-                target_values_array[i]['distance'] = target_values_range['distance'][0] + (0.1+0.4*i)*diff
+        for i in range(n_constraints):
+            target_values_array[i] = copy.deepcopy(target_values_range)
 
-                if 'elevation_gain' in target_values_range:
-                    diff = target_values_range['elevation_gain'][1] - target_values_range['elevation_gain'][0]
-                    target_values_array[i]['elevation_gain'] = target_values_range['elevation_gain'][0] + (0.1+0.4*i)*diff
+            diff = target_values_range['distance'][1] - target_values_range['distance'][0]
+            target_values_array[i]['distance'] = target_values_range['distance'][0] + (ini_factor+factor*i)*diff
 
+            if 'elevation_gain' in target_values_range:
+                diff = target_values_range['elevation_gain'][1] - target_values_range['elevation_gain'][0]
+                target_values_array[i]['elevation_gain'] = target_values_range['elevation_gain'][0] + (ini_factor+factor*i)*diff
 
+        #
+
+        # Run the route finder three times!
+        #
         totals = []
         possible_routes= []
         error = []
-        for i in range(3):
-            x,y,z = self.multi_find_route(start_node, target_values_array[i], **kwargs)
+        for i in range(n_constraints):
+            temp_totals, temp_pr, temp_error = self.multi_find_route(start_node,
+                                                                     target_values_array[i],
+                                                                     n_routes=n_routes,
+                                                                     **kwargs)
 
-            totals.extend(x)
-            possible_routes.extend(y)
-            error.extend(z)
+            totals.extend(temp_totals)
+            possible_routes.extend(temp_pr)
+            error.extend(temp_error)
 
         sorted_index = np.argsort(error)
 
@@ -133,7 +156,7 @@ class TrailMap(nx.MultiDiGraph):
                                target_methods=None,
                                primary_weight = 'distance',
                                reinitialize = True,                # reset 'traversed' counter each iteration
-                               subgraph_filter=False,
+                               subgraph_filter=True,
                                reset_used_counter = False,  # reset used (binary flag) each iteration
                                n_cpus=1):
         """
@@ -178,7 +201,7 @@ class TrailMap(nx.MultiDiGraph):
         all_routes = [None] * iterations
 
 
-        if subgraph_filter and len(self.nodes) > 1000:
+        if subgraph_filter and len(self.nodes) > 1:
             # pre-filter graph by generating a sub-graph to speed up computation
 
             # CAREFUL HERE. this subgraph is a view with mutable node / edge
@@ -189,19 +212,22 @@ class TrailMap(nx.MultiDiGraph):
             filtered_nodes = list(filt_paths.keys())
             subG = self.subgraph(filtered_nodes)
 
-            self._print("SubGraph Filter reduced nodes from %i to %i"%(len(self.nodes),len(subG.nodes)))
+            self._print("SubGraph Filter reduced nodes from %i to %i"%(len(self.nodes),len(subG.nodes)), type(subG), type(self))
+
+            subG._neg_weight = False
+            self._neg_weight = False
 
         else:
             subG = self # placeholder to do prefiltering later !!!
 
 
         for niter in range(iterations):
-            totals, routes = self.find_route(start_node, target_values,
+            totals, routes = subG.find_route(start_node, target_values,
                                              target_methods=target_methods,
                                              end_node=end_node,
                                              primary_weight=primary_weight,
-                                             reinitialize=reinitialize,
-                                             subG = subG)
+                                             reinitialize=reinitialize)
+
 
             all_totals[niter], all_routes[niter] = totals, routes
 
@@ -241,8 +267,7 @@ class TrailMap(nx.MultiDiGraph):
                          primary_weight = 'distance',
                          reinitialize=True,
                          reset_used_counter = False,
-                         epsilon=0.25,
-                         subG=None):
+                         epsilon=0.25):
         """
         The core piece of Plan-It
 
@@ -281,7 +306,7 @@ class TrailMap(nx.MultiDiGraph):
                               counter meant to penalize segments that may be in an already
                               defined route. Default : True
 
-        epsilon  : (Optional, flot) Parameter for the `get_next_node` algorithm
+        epsilon  : (Optional, flot) Parameter for the `get_intermediate_node` algorithm
                    to adjust search method.
 
         Returns:
@@ -303,7 +328,6 @@ class TrailMap(nx.MultiDiGraph):
         # set up totals methods dictionary using input and supply default
         # if not overridden.
         #
-
         if target_methods is None:
             target_methods = {}
 
@@ -321,7 +345,7 @@ class TrailMap(nx.MultiDiGraph):
                 self._print("Route not feasible. Please try different input")
                 return None, None
 
-        self.scale_edge_attributes()         # needed to do weighting properly
+        self.scale_edge_attributes()          # needed to do weighting properly
         self._assign_weights(target_values)   # assigns factors to easily do weighting based on desired constraints
 
 
@@ -335,12 +359,7 @@ class TrailMap(nx.MultiDiGraph):
         count        = 0
         current_node = start_node
 
-        # do pre-filtering here using views
-        # nx.classes.filters.hide_edges([(2,5)])
-        # subG = nx.subgraph_view(G, filter_edge = f)
-        #
-        if subG is None:
-            subG = self
+
 
         #
         # for now - empty dict we can use to copy multiple times if need be
@@ -356,17 +375,17 @@ class TrailMap(nx.MultiDiGraph):
 
         if reinitialize and reset_used_counter:
 
-            for e in self.edges(data=True):
+            for e in self.edges(data=True): # was self
                 e[2]['traversed_count'] = 0
                 e[2]['in_another_route'] = 0
 
         elif reinitialize:
             # reset some things
-            for e in self.edges(data=True):
+            for e in self.edges(data=True): # was self
                 e[2]['traversed_count'] = 0
 
 
-            self.recompute_edge_weights(target_values=target_values)
+            self.recompute_edge_weights(target_values=target_values) # was self
 
 
         remaining = {k:0 for k in totals_methods.keys()} # dict to get remainders to target
@@ -384,10 +403,10 @@ class TrailMap(nx.MultiDiGraph):
             # can do better sucess / failure here and try once with target values
             # then try a second time without target values, with a error message
             # saying constraints not satisfied.
-            next_node = self.get_intermediate_node(current_node,
+            next_node = self.get_intermediate_node(current_node, # was self
                                                    remaining['distance'],
                                                    target_values=target_values,
-                                                   G=subG, epsilon=epsilon)
+                                                   epsilon=epsilon, exclude=[start_node])
             if next_node < 0:
                 self._dprint("Next node not found!")
                 # if epsilon fails I could also just pick a next node at random?
@@ -402,11 +421,11 @@ class TrailMap(nx.MultiDiGraph):
 
 
                 if neg_weights:
-                    shortest_path_home = nx.bellman_ford_path(subG, current_node, end_node, weight='weight')
+                    shortest_path_home = nx.bellman_ford_path(self, current_node, end_node, weight='weight')
                 else:
-                    shortest_path_home = nx.shortest_path(subG, current_node, end_node, weight='weight')
-                shortest_edges_home    = self.edges_from_nodes(shortest_path_home)
-                shortest_primary_home  = self.reduce_edge_data(primary_weight,edges=shortest_edges_home)
+                    shortest_path_home = nx.shortest_path(self, current_node, end_node, weight='weight')
+                shortest_edges_home    = self.edges_from_nodes(shortest_path_home) # was self
+                shortest_primary_home  = self.reduce_edge_data(primary_weight,edges=shortest_edges_home) # was self
 
                 #
                 # would potentialy be v cool to iterate here and check once with weight
@@ -426,26 +445,26 @@ class TrailMap(nx.MultiDiGraph):
                     inext      = np.random.randint(0, len(shortest_path_home))
                     next_node  = shortest_path_home[inext]
                     next_path  = shortest_path_home[:inext+1] # AJE: bug here?
-                    next_edges = self.edges_from_nodes(next_path)
+                    next_edges = self.edges_from_nodes(next_path) # was self
                     self._dprint("Picking route on way to home %i %i"%(inext,next_node),next_path)
                 else:
                     if neg_weights:
-                        next_path  = nx.bellman_ford_path(subG, current_node, next_node, weight='weight')
+                        next_path  = nx.bellman_ford_path(self, current_node, next_node, weight='weight')
                     else:
-                        next_path  = nx.shortest_path(subG, current_node, next_node, weight='weight')
-                    next_edges = self.edges_from_nodes(next_path)
+                        next_path  = nx.shortest_path(self, current_node, next_node, weight='weight')
+                    next_edges = self.edges_from_nodes(next_path) # was self
 
             else:
                 if neg_weights:
-                    next_path  = nx.bellman_ford_path(subG, current_node, next_node, weight='weight')
+                    next_path  = nx.bellman_ford_path(self, current_node, next_node, weight='weight')
                 else:
-                    next_path  = nx.shortest_path(subG, current_node, next_node, weight='weight')
-                next_edges = self.edges_from_nodes(next_path)
+                    next_path  = nx.shortest_path(self, current_node, next_node, weight='weight')
+                next_edges = self.edges_from_nodes(next_path) # was self
 
 
             for tail,head in next_edges:
-                self._adj[tail][head][_IDIR]['traversed_count'] += 1
-                self._adj[tail][head][_IDIR]['in_another_route'] = 1
+                self._adj[tail][head][_IDIR]['traversed_count'] += 1 # was self
+                self._adj[tail][head][_IDIR]['in_another_route'] = 1 # was self
 
             # add path
             self._dprint("Possible and next: ", possible_routes[iroute], next_path)
@@ -453,11 +472,11 @@ class TrailMap(nx.MultiDiGraph):
             possible_routes[iroute].extend(next_path[1:])
             # increment totals
             for k in (totals[iroute]).keys():
-                newval = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k])
+                newval = self.reduce_edge_data(k, edges=next_edges, function=totals_methods[k]) # was self
                 totals[iroute][k] = totals_methods[k]( [totals[iroute][k], newval])
 
             # recompute weights:
-            self.recompute_edge_weights(target_values=target_values,
+            self.recompute_edge_weights(target_values=target_values, # was self
                                         totals=totals[iroute]) # probably need kwargs
 
             # use edges_to_hide = nx.classes.filters.hide_edges(edges)
@@ -516,7 +535,6 @@ class TrailMap(nx.MultiDiGraph):
 
 
         # if route IS feasible, see if we fit within the constraints
-
         route_properties = self.route_properties(route, verbose=False)
 
         for k in target_values.keys():
@@ -614,10 +632,10 @@ class TrailMap(nx.MultiDiGraph):
         return totals
 
     def get_intermediate_node(self, current_node, target_distance,
-                                    G=None,
                                     epsilon=0.1, shift = 0.1,
                                     weight='distance',
                                     target_values = {},
+                                    exclude = None,
                                     max_iterations = 100):
         """
         Search for a node to jump to next in the algorithm given knowledge of
@@ -639,6 +657,8 @@ class TrailMap(nx.MultiDiGraph):
                             weighting. Default : 'distance'
         target_values    :  (optional, dict) dictionary of target features and values
                             to (if provided) make better informed routing decisions.
+        exclude          :  List of nodes to exclude from being selected as a next node.
+                            Default : None
         max_iterations   :  (optional, int) Maximum number of iterations within loop to find a new node.
                             Default : 100
 
@@ -646,9 +666,6 @@ class TrailMap(nx.MultiDiGraph):
         ----------
         next_node        : (int) Node index of next target node
         """
-
-        if G is None:
-            G = self
 
         next_node = None
 
@@ -665,11 +682,14 @@ class TrailMap(nx.MultiDiGraph):
             #
             # would be cool to pick the node with opposite (ish) direction vector
             # between current node and home (if round trip)
-            all_possible_points = nx.single_source_dijkstra(G, current_node,
+            all_possible_points = nx.single_source_dijkstra(self, current_node,
                                                             weight='distance',     # worth noting that this should be strict distance (or slightly modified) since we are using a cutoff
-                                                            cutoff=(epsilon+shift)*target_distance)
+                                                            cutoff=(epsilon+shift)*target_distance)[0]
 
-            if len(all_possible_points[0]) == 1:
+            if not (exclude is None):
+                all_possible_points = {k:v for (k,v) in all_possible_points.items() if not (k in exclude)}
+
+            if len(all_possible_points) == 1:
                 if epsilon > 1.0:
                     self._print("WARNING1: Failed to find an intermediate node. Epsilon maxing out")
                     failed    = True
@@ -680,8 +700,8 @@ class TrailMap(nx.MultiDiGraph):
                 epsilon = epsilon + shift
                 continue
 
-            farthest_node = np.max(all_possible_points[0].values())
-            possible_points = [k for (k,v) in all_possible_points[0].items() if v >= (epsilon-shift)*target_distance]
+            farthest_node = np.max(all_possible_points.values())
+            possible_points = [k for (k,v) in all_possible_points.items() if v >= (epsilon-shift)*target_distance]
 
             if len(possible_points) == 0:
                 if epsilon > 1.0:
@@ -696,8 +716,9 @@ class TrailMap(nx.MultiDiGraph):
                 epsilon = epsilon + shift
                 continue
 
+            #
             # select one at random!!!
-
+            #
             next_node = None
             random.shuffle(possible_points) # in-place for some reason
             j = 0
@@ -718,9 +739,9 @@ class TrailMap(nx.MultiDiGraph):
                     fdict = {'average_max_grade' : np.max, 'average_min_grade': np.min, 'average_grade' : self._max_abs}
 
                     if neg_weights:
-                        weighted_path  = nx.bellman_ford_path(G, current_node, next_node, weight='weight')
+                        weighted_path  = nx.bellman_ford_path(self, current_node, next_node, weight='weight')
                     else:
-                        weighted_path  = nx.shortest_path(G, current_node, next_node, weight='weight')
+                        weighted_path  = nx.shortest_path(self, current_node, next_node, weight='weight')
 
                     for k in value_checks:
                         if k in target_values.keys():
@@ -783,13 +804,13 @@ class TrailMap(nx.MultiDiGraph):
         for k in self.edge_attributes:
             if (not (k in self._scalings.keys())) or reset:
                 self._scalings[k] = {}
-                self._scalings[k]['min_val'] = min_val = self.reduce_edge_data(k,function=np.min)
+                self._scalings[k]['min_val'] = self.reduce_edge_data(k,function=np.min)
                 self._scalings[k]['max_val'] = self.reduce_edge_data(k,function=np.max)
                 self._scalings[k]['max_min'] = self._scalings[k]['max_val'] - self._scalings[k]['min_val']
 
         for k in self.edge_attributes: # need error checking for non quantiative values
-
             if (self._scalings[k]['max_min']) == 0.0: # likely no data here - don't rescale
+                e[2][k+'_scaled'] = 0.0
                 continue
 
             for e in self.edges(data=True):
@@ -828,15 +849,13 @@ class TrailMap(nx.MultiDiGraph):
         wf = copy.deepcopy(self._weight_factors)
         self._neg_weight = False
 
-        def _compute_grade_weight(key, edict, absval=False):
+        print("weight factors:", wf)
+
+        def _compute_grade_weight(key, edict):
             """
-            Helper function for doing grade scalings.
-            Currently computing distance in scaled variables. But maybe better to compute
-            scaling by relative 'error' (desired - edgeval) / desired ??
-
-            weight function here is 1 - 0.5*(desired - val)^2, flattening to 0 when negative.
-            gaurunteed to be 0 - 1
-
+            Helper function for doing grade scalings. Original method was more
+            complex than the below, but left this function in case this is
+            revisited in the future.
             """
 
             if wf[key] == 0.0:
@@ -850,13 +869,12 @@ class TrailMap(nx.MultiDiGraph):
             #val = np.max([val,0.0])
             #val = np.min([val,1.0])
 
-            if absval:
-                val = (np.abs(target_values.get(key,edict[key])) - np.abs(edict[key]))
+            val = (np.abs(target_values.get(key,edict[key])) - np.abs(edict[key]))
 
             if val > 0:
-                return wf[key] * 0.0
+                return wf[key] * 0.0    # allow travel along this
             else:
-                return wf[key] * 100.0 # really avoid this !!
+                return wf[key] * 1000.0 # really avoid this !!
 
 
 
@@ -906,12 +924,12 @@ class TrailMap(nx.MultiDiGraph):
                 d['weight'] += wf['elevation_loss'] * d['elevation_loss_scaled']
                 d['weight'] += _compute_grade_weight('average_max_grade',d) * d['distance_scaled']
                 d['weight'] += _compute_grade_weight('average_min_grade',d) * d['distance_scaled']
-                d['weight'] += _compute_grade_weight('average_grade',d,absval=True) * d['distance_scaled']
+                d['weight'] += _compute_grade_weight('average_grade',d) * d['distance_scaled']
 
             else:
                 d['weight'] += wf['elevation_loss'] * d['elevation_gain_scaled']
                 d['weight'] += wf['elevation_gain'] * d['elevation_loss_scaled']
-                d['weight'] += _compute_grade_weight('average_grade',d,absval=True) * d['distance_scaled']
+                d['weight'] += _compute_grade_weight('average_grade',d) * d['distance_scaled']
                 if (wf['average_max_grade'] > 0):
                     d['weight'] += _compute_grade_weight('average_max_grade',d) *\
                                    (wf['average_min_grade']/wf['average_max_grade']) * d['distance_scaled']
