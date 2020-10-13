@@ -40,6 +40,7 @@ def getTrails(private_key, lat, lon, verbose = False, **kwargs):
         for key in kwargs.keys():
             if key in possible_args:
                 args = args + "&" + key + "=" +(possible_args[key])%(kwargs[key])
+                print("adding " + key + " to args")
             else:
                 print("Key not found in possible getTrails arguments : ",key, kwargs[key])
                 raise KeyError
