@@ -37,13 +37,14 @@ relies on an open pull request from the SRTM package:
 
 https://github.com/tkrajina/srtm.py/pull/39
 
-you will have to download a local copy of srtm and pull the PR
-locally as a new branch:
+Unfortunately this PR is a bit old by now. However, I have 
+a version that is up-to-date with the main branch. You 
+will need to download and install this as:
 
-$ git clone https://github.com/tkrajina/srtm.py ./srtm
+$ git clone https://github.com/aemerick/srtm.py ./srtm
 $ cd srtm
-$ git fetch origin pull/39/head:pr39
-$ git git checkout pr39
+$ git pull origin
+$ git checkout pr39merge
 
 Then to install, the following should work:
 
