@@ -16,7 +16,6 @@
 import matplotlib.pyplot as plt
 import geopandas as geopd
 import gpxpy
-import srtm
 import shapely
 import networkx as nx
 import numpy as np
