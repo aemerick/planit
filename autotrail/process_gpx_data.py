@@ -45,8 +45,28 @@ except:
 
 #
 # set up global lookup table for making elevation data
+# using NASA's Shuttle Radar Topography Mission data
+# at 1 arcsecond resolution
 #
-_elevation_data = srtm.get_data()
+
+def _load_elevations():
+    """
+    Helper function to generate global elevation
+    data class
+    """
+    _curr_path = '/'.join(__file__.split('/')[:-1])
+    _eduser, _edpass = open(_curr_path + '/eduser.secret').read().strip().split(',')
+    ed = srtm.data.GeoElevationData( version = "v3.1a",  # srtm version
+                                                  batch_mode = False, # should not need to set True for this usecase
+                                                  fallback = False,   # do not fallback to lowres data
+                                                  EDuser = _eduser,   # user id
+                                                  EDpass = _edpass    # password
+                                                )
+
+
+    return ed
+
+_elevation_data = _load_elevations()
 
 
 def combine_gpx(segments):
