@@ -110,7 +110,6 @@ seaborn==0.11.0
 Shapely==1.7.1
 six==1.15.0
 snuggs==1.4.7
-SRTM.py==0.3.6
 statsmodels==0.12.0
 terminado==0.8.3
 testpath==0.4.4
