@@ -1,4 +1,6 @@
-# Plan-It (formerly autotrail)
+# Plan-It 
+
+For a high-level overview of Plan-It Trails: https://tinyurl.com/y2kysev8
 
 An application to produce computer-generated hiking and trail running routes
 given a series of user-provided contraints, geared towards the avid
@@ -17,8 +19,6 @@ Caching is currently implemented only if desired bounding box matches exactly wi
 a previously downloaded box (filename matches desired bbox coordinates). OSM has
 available a resource to locally cache and query the full OSM database, but this 
 is not yet implemented to work with this application.
-
-Still very much building this! 
 
 Plan-It trails is hosted here : planit-trails.website
 (Please be gentle, trying to keep server costs low, but do let me 
