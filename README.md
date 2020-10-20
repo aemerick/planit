@@ -25,3 +25,30 @@ Plan-It trails is hosted here : planit-trails.website
 know if it breaks: aemerick11@gmail.com)
 
 Code for front-end here: https://github.com/aemerick/autotrail_app
+
+## Installation:
+
+To install planit trails, it should be sufficient to do:
+
+$ pip install -r requirements.txt
+
+which will install a majority of the dependencies. However, this 
+relies on an open pull request from the SRTM package:
+
+https://github.com/tkrajina/srtm.py/pull/39
+
+you will have to download a local copy of srtm and pull the PR
+locally as a new branch:
+
+$ git clone https://github.com/tkrajina/srtm.py ./srtm
+$ cd srtm
+$ git fetch origin pull/39/head:pr39
+$ git git checkout pr39
+
+Then to install, the following should work:
+
+$ python setup.py develop
+
+(depending on your particular environment setup). You may also
+need to add the srtm directory to your PYTHONPATH environment
+variable 
