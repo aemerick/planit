@@ -41,8 +41,11 @@ a version that is up-to-date with the main branch. You
 will need to download and install this as:
 
 $ git clone https://github.com/aemerick/srtm.py ./srtm
+
 $ cd srtm
+
 $ git pull origin
+
 $ git checkout pr39merge
 
 Then to install, the following should work:
