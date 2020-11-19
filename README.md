@@ -12,8 +12,7 @@ trail data. However, this has since expanded to integrate with the entire
 Open Street Map database and is able to generate trail routes anywhere where
 OSM has recorded trail data (which is most places). This uses the OSMNx package
 to request and download OSM data in a bounding box around a desired region.
-However, since there is currenlty no way to pre-filter out roads (much of the data)
-before download this can take some time to do. 
+
 
 Caching is currently implemented only if desired bounding box matches exactly with 
 a previously downloaded box (filename matches desired bbox coordinates). OSM has
@@ -42,8 +41,11 @@ a version that is up-to-date with the main branch. You
 will need to download and install this as:
 
 $ git clone https://github.com/aemerick/srtm.py ./srtm
+
 $ cd srtm
+
 $ git pull origin
+
 $ git checkout pr39merge
 
 Then to install, the following should work:
