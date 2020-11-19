@@ -6,7 +6,7 @@
 
     LICENSE :GPLv3
 
-    Auto-generated hiking and trail running routes in Boulder, CO
+    Auto-generated hiking and trail running routes
     based on known trail data and given user-specified contraints.
 
 
